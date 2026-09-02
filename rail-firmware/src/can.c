@@ -5,8 +5,10 @@
 #include "board.h"
 
 static CAN_HandleTypeDef hcan1;
-static uint32_t tx_ok_count;
-static uint32_t tx_fail_count;
+static volatile uint32_t tx_ok_count;
+static volatile uint32_t tx_fail_count;
+static can_frame_t latest_frame;
+static volatile uint32_t latest_sequence;
 
 bool can_init(void)
 {
@@ -47,7 +49,16 @@ bool can_init(void)
         return false;
     }
 
-    return HAL_CAN_Start(&hcan1) == HAL_OK;
+    if (HAL_CAN_Start(&hcan1) != HAL_OK)
+    {
+        return false;
+    }
+
+    HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+
+    return HAL_CAN_ActivateNotification(&hcan1,
+                                         CAN_IT_RX_FIFO0_MSG_PENDING) == HAL_OK;
 }
 
 bool can_send(uint32_t id, const uint8_t data[8])
@@ -74,28 +85,57 @@ bool can_send(uint32_t id, const uint8_t data[8])
     return false;
 }
 
-bool can_recv(can_frame_t *frame)
+bool can_read_latest(can_frame_t *frame, uint32_t *sequence)
 {
-    if (frame == 0 || HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0) == 0)
+    if (frame == 0 || sequence == 0 || latest_sequence == 0)
     {
         return false;
     }
 
-    CAN_RxHeaderTypeDef header = {0};
-
-    if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &header, frame->data) != HAL_OK)
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    *frame = latest_frame;
+    *sequence = latest_sequence;
+    if (primask == 0U)
     {
-        return false;
+        __enable_irq();
     }
 
-    if (header.IDE != CAN_ID_EXT || header.RTR != CAN_RTR_DATA)
-    {
-        return false;
-    }
-
-    frame->id = header.ExtId;
-    frame->len = (uint8_t)header.DLC;
     return true;
+}
+
+void CAN1_RX0_IRQHandler(void)
+{
+    HAL_CAN_IRQHandler(&hcan1);
+}
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    if (hcan != &hcan1)
+    {
+        return;
+    }
+
+    while (HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0) > 0U)
+    {
+        CAN_RxHeaderTypeDef header = {0};
+        can_frame_t frame = {0};
+
+        if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &header, frame.data) != HAL_OK)
+        {
+            return;
+        }
+
+        if (header.IDE != CAN_ID_EXT || header.RTR != CAN_RTR_DATA)
+        {
+            continue;
+        }
+
+        frame.id = header.ExtId;
+        frame.len = (uint8_t)header.DLC;
+        latest_frame = frame;
+        latest_sequence++;
+    }
 }
 
 void can_get_status(can_status_t *status)

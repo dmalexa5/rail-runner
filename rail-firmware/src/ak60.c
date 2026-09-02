@@ -60,9 +60,7 @@ bool ak60_send_torque_nm(float torque_nm)
     uint16_t v = float_to_uint(0.0f, AK60_V_MIN, AK60_V_MAX, 12);
     uint16_t kp = float_to_uint(0.0f, AK60_KP_MIN, AK60_KP_MAX, 12);
     uint16_t kd = float_to_uint(0.0f, AK60_KD_MIN, AK60_KD_MAX, 12);
-    uint16_t t = float_to_uint(clampf(torque_nm,
-                                      -AK60_DEBUG_TORQUE_LIMIT_NM,
-                                      AK60_DEBUG_TORQUE_LIMIT_NM),
+    uint16_t t = float_to_uint(clampf(torque_nm, AK60_T_MIN, AK60_T_MAX),
                                AK60_T_MIN,
                                AK60_T_MAX,
                                12);

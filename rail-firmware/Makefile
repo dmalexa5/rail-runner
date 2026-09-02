@@ -20,7 +20,7 @@ CFLAGS = \
     $(MCU) \
     -Wall \
     -Wextra \
-    -O0 \
+    -O2 \
     -g3 \
     -ffunction-sections \
     -fdata-sections \
@@ -33,7 +33,7 @@ LDFLAGS = \
 
 INCLUDES = \
     -Iinclude \
-    -Ivendor/STM32CubeF4/Drivers/CMSIS/Core/Include \
+    -Ivendor/STM32CubeF4/Drivers/CMSIS/Include \
     -Ivendor/STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include \
     -Ivendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc
 
@@ -46,6 +46,8 @@ SOURCES = \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c \
+    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c \
+    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/syscalls.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/sysmem.c

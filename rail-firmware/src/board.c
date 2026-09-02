@@ -28,4 +28,21 @@ void board_init(void)
     gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = BOARD_UART_GPIO_AF;
     HAL_GPIO_Init(BOARD_UART_GPIO_PORT, &gpio);
+
+    gpio.Pin = BOARD_SAFETY_1_PIN | BOARD_SAFETY_2_PIN;
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_PULLUP;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    gpio.Alternate = 0;
+    HAL_GPIO_Init(BOARD_SAFETY_GPIO_PORT, &gpio);
+}
+
+bool board_safety_switches_ok(void)
+{
+    GPIO_PinState switch_1 = HAL_GPIO_ReadPin(BOARD_SAFETY_GPIO_PORT,
+                                              BOARD_SAFETY_1_PIN);
+    GPIO_PinState switch_2 = HAL_GPIO_ReadPin(BOARD_SAFETY_GPIO_PORT,
+                                              BOARD_SAFETY_2_PIN);
+
+    return switch_1 == GPIO_PIN_RESET && switch_2 == GPIO_PIN_RESET;
 }

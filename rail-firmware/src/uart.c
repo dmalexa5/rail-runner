@@ -6,6 +6,14 @@
 
 static UART_HandleTypeDef huart2;
 
+#define UART_TX_QUEUE_SIZE 512U
+
+static uint8_t tx_queue[UART_TX_QUEUE_SIZE];
+static volatile size_t tx_head;
+static volatile size_t tx_tail;
+static volatile size_t tx_in_flight;
+static volatile bool tx_active;
+
 bool uart_init(void)
 {
     __HAL_RCC_USART2_CLK_ENABLE();
@@ -19,13 +27,21 @@ bool uart_init(void)
     huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     huart2.Init.OverSampling = UART_OVERSAMPLING_16;
 
-    return HAL_UART_Init(&huart2) == HAL_OK;
+    if (HAL_UART_Init(&huart2) != HAL_OK)
+    {
+        return false;
+    }
+
+    HAL_NVIC_SetPriority(USART2_IRQn, 3, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
+    return true;
 }
 
 bool uart_read_line(char *line, size_t line_size)
 {
     static char buffer[32];
     static size_t used = 0;
+    static bool overflow = false;
     uint8_t ch = 0;
 
     if (line == 0 || line_size == 0)
@@ -37,6 +53,13 @@ bool uart_read_line(char *line, size_t line_size)
     {
         if (ch == '\r' || ch == '\n')
         {
+            if (overflow)
+            {
+                line[0] = '\0';
+                used = 0;
+                overflow = false;
+                return true;
+            }
             if (used == 0)
             {
                 continue;
@@ -56,17 +79,77 @@ bool uart_read_line(char *line, size_t line_size)
         {
             buffer[used++] = (char)ch;
         }
+        else
+        {
+            overflow = true;
+        }
     }
 
     return false;
 }
 
-void uart_write(const char *text)
+bool uart_write(const char *text)
 {
     if (text == 0)
+    {
+        return false;
+    }
+
+    size_t length = strlen(text);
+    size_t head = tx_head;
+    size_t tail = tx_tail;
+    size_t used = head >= tail ? head - tail : UART_TX_QUEUE_SIZE - tail + head;
+    size_t free = UART_TX_QUEUE_SIZE - used - 1U;
+
+    if (length > free)
+    {
+        return false;
+    }
+
+    for (size_t i = 0; i < length; i++)
+    {
+        tx_queue[head] = (uint8_t)text[i];
+        head = (head + 1U) % UART_TX_QUEUE_SIZE;
+    }
+
+    __DMB();
+    tx_head = head;
+    return true;
+}
+
+void uart_service(void)
+{
+    if (tx_active || tx_tail == tx_head)
     {
         return;
     }
 
-    HAL_UART_Transmit(&huart2, (uint8_t *)text, (uint16_t)strlen(text), HAL_MAX_DELAY);
+    size_t tail = tx_tail;
+    size_t head = tx_head;
+    size_t length = head > tail ? head - tail : UART_TX_QUEUE_SIZE - tail;
+
+    tx_in_flight = length;
+    tx_active = true;
+    if (HAL_UART_Transmit_IT(&huart2, &tx_queue[tail], (uint16_t)length) != HAL_OK)
+    {
+        tx_active = false;
+        tx_in_flight = 0;
+    }
+}
+
+void USART2_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&huart2);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart != &huart2)
+    {
+        return;
+    }
+
+    tx_tail = (tx_tail + tx_in_flight) % UART_TX_QUEUE_SIZE;
+    tx_in_flight = 0;
+    tx_active = false;
 }

@@ -7,8 +7,6 @@
 #include "can.h"
 
 #define AK60_DEFAULT_CAN_ID 2U
-#define AK60_DEBUG_TORQUE_LIMIT_NM 1.0f
-#define AK60_COMMAND_PERIOD_MS 10U
 
 typedef struct
 {
@@ -27,7 +25,11 @@ void ak60_set_id(uint32_t id);
 uint32_t ak60_get_id(void);
 bool ak60_power_on(void);
 bool ak60_power_off(void);
+
+/** Sends one MIT-mode torque command, clamped to the AK60 protocol range. */
 bool ak60_send_torque_nm(float torque_nm);
+
+/** Decodes feedback addressed to the configured motor ID. */
 bool ak60_parse_feedback(const can_frame_t *frame, ak60_state_t *state);
 
 #endif
