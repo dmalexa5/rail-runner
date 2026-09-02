@@ -1,0 +1,33 @@
+# ros2
+log/
+build/
+install/
+
+# workspace
+.colcon/
+.ros
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# cpp build artifacts
+*.o
+*.so
+*.a
+*.dylib
+
+# ide config
+.vscode/
+.idea/
+cmake-build-debug/
+cmake-build-release/
+.DS_Store
+
+# vendor
+vendor/

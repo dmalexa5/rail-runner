@@ -1,0 +1,22 @@
+#ifndef BOARD_H
+#define BOARD_H
+
+#include "stm32f4xx_hal.h"
+
+#define BOARD_LED_GPIO_PORT GPIOA
+#define BOARD_LED_PIN GPIO_PIN_5
+
+#define BOARD_CAN1_RX_GPIO_PORT GPIOB
+#define BOARD_CAN1_RX_PIN GPIO_PIN_8
+#define BOARD_CAN1_TX_GPIO_PORT GPIOB
+#define BOARD_CAN1_TX_PIN GPIO_PIN_9
+#define BOARD_CAN1_GPIO_AF GPIO_AF9_CAN1
+
+#define BOARD_UART_GPIO_PORT GPIOA
+#define BOARD_UART_TX_PIN GPIO_PIN_2
+#define BOARD_UART_RX_PIN GPIO_PIN_3
+#define BOARD_UART_GPIO_AF GPIO_AF7_USART2
+
+void board_init(void);
+
+#endif

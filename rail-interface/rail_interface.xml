@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="rail_interface">
+  <class
+    name="rail_interface/RailSystem"
+    type="rail_interface::RailSystem"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>Minimal rail ros2_control system interface.</description>
+  </class>
+</library>

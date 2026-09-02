@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="rail_interface">
+  <class
+    name="rail_interface/RailController"
+    type="rail_interface::RailController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>Minimal rail controller interface.</description>
+  </class>
+</library>
