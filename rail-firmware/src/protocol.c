@@ -28,7 +28,7 @@ static void write_status(void)
     control_get_status(&control);
     can_get_status(&can);
     snprintf(line, sizeof(line),
-             "STATUS armed=%u safe=%u fault=%u cmd_mNm=%ld cycles=%lu overruns=%lu max_cycles=%lu lease_ms=%lu feedback_ms=%lu feedback_seq=%lu motor_valid=%u motor_id=%u pos_mrad=%ld vel_mrad_s=%ld torque_mNm=%ld temp_c=%u motor_error=%u can_error=0x%08lx tx_ok=%lu tx_fail=%lu\r\n",
+             "s,%u,%u,%u,%ld,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%ld,%ld,%ld,%u,%u,%lx,%lu,%lu\n",
              control.armed ? 1U : 0U,
              control.safety_switches_ok ? 1U : 0U,
              (unsigned int)control.fault,
@@ -52,6 +52,20 @@ static void write_status(void)
     uart_write(line);
 }
 
+static void write_feedback(void)
+{
+    control_status_t control;
+    char line[64];
+
+    control_get_status(&control);
+    snprintf(line, sizeof(line),
+             "f,%ld,%ld,%ld\n",
+             (long)(control.motor.position_rad * 1000.0f),
+             (long)(control.motor.velocity_rad_s * 1000.0f),
+             (long)(control.motor.torque_nm * 1000.0f));
+    uart_write(line);
+}
+
 void protocol_handle_line(char *line)
 {
     if (line == 0)
@@ -60,38 +74,42 @@ void protocol_handle_line(char *line)
     }
 
     trim_line(line);
-    if (strcmp(line, "arm") == 0)
+    if (strcmp(line, "a") == 0)
     {
-        uart_write(control_arm() ? "OK arm\r\n" : "ERR arm_rejected\r\n");
+        uart_write(control_arm() ? "k,a\n" : "e,a\n");
     }
-    else if (strcmp(line, "disarm") == 0)
+    else if (strcmp(line, "d") == 0)
     {
         control_disarm();
-        uart_write("OK disarm\r\n");
+        uart_write("k,d\n");
     }
-    else if (strncmp(line, "torque ", 7) == 0)
+    else if (strncmp(line, "t,", 2) == 0)
     {
         char *end = 0;
-        float torque_nm = strtof(line + 7, &end);
-        if (end == line + 7 || *end != '\0' || !isfinite(torque_nm))
+        float torque_nm = strtof(line + 2, &end);
+        if (end == line + 2 || *end != '\0' || !isfinite(torque_nm))
         {
-            uart_write("ERR torque\r\n");
+            uart_write("e,i\n");
         }
         else if (!control_set_torque(torque_nm))
         {
-            uart_write("ERR torque_rejected\r\n");
+            uart_write("e,r\n");
         }
         else
         {
-            uart_write("OK torque\r\n");
+            uart_write("k,t\n");
         }
     }
-    else if (strcmp(line, "status") == 0)
+    else if (strcmp(line, "s") == 0)
     {
         write_status();
     }
+    else if (strcmp(line, "f") == 0)
+    {
+        write_feedback();
+    }
     else
     {
-        uart_write("ERR command\r\n");
+        uart_write("e,c\n");
     }
 }
