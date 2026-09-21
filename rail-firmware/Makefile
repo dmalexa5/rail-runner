@@ -1,4 +1,10 @@
-TARGET = board
+BOARD ?= drive
+
+ifneq ($(BOARD),drive)
+$(error Unsupported BOARD '$(BOARD)'; only BOARD=drive is implemented)
+endif
+
+TARGET = rail-$(BOARD)
 
 CC      = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
@@ -14,7 +20,8 @@ MCU = $(CPU) -mthumb $(FPU) $(FLOAT_ABI)
 
 DEFINES = \
     -DSTM32F446xx \
-    -DUSE_HAL_DRIVER
+    -DUSE_HAL_DRIVER \
+    -DBOARD_DRIVE
 
 CFLAGS = \
     $(MCU) \

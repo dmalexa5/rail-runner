@@ -1,27 +1,54 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
-/**
- * Processes one newline-delimited host command and queues one response.
- *
- * Stable commands:
- *   a          Arm, or refresh the 100 ms arm lease.
- *   d          Disarm and clear the requested torque.
- *   t,<Nm>     Set torque in newton-metres within +/-5 Nm while armed.
- *   s          Return full control, safety, timing, CAN, and motor state.
- *   f          Return position, velocity, and torque feedback.
- *
- * Successful commands return "k,<command>". Errors return "e,<code>", where
- * the code is a (arm rejected), i (invalid torque), r (torque rejected), or
- * c (unknown command). Status and feedback are positional CSV records beginning
- * with "s" and "f". Floating-point quantities are integer milli-units.
- *
- * The feedback fields are position, velocity, and torque. The status fields are
- * armed, safe, fault, commanded torque, cycles, overruns, maximum cycles, arm
- * lease age, feedback age, feedback sequence, motor valid, motor ID, position,
- * velocity, torque, temperature, motor error, hexadecimal CAN error, TX OK,
- * and TX failed.
- */
-void protocol_handle_line(char *line);
+#include <stdbool.h>
+
+typedef enum
+{
+    PROTOCOL_REQUEST_NONE = 0,
+    PROTOCOL_REQUEST_CALIBRATE,
+    PROTOCOL_REQUEST_DISARM,
+    PROTOCOL_REQUEST_SETPOINT,
+    PROTOCOL_REQUEST_INVALID
+} protocol_request_type_t;
+
+typedef struct
+{
+    protocol_request_type_t type;
+    float value_mm_s;
+} protocol_request_t;
+
+typedef enum
+{
+    PROTOCOL_RESPONSE_NONE = 0,
+    PROTOCOL_RESPONSE_CALIBRATING,
+    PROTOCOL_RESPONSE_DISARMED,
+    PROTOCOL_RESPONSE_ACK,
+    PROTOCOL_RESPONSE_ERR_CAL,
+    PROTOCOL_RESPONSE_ERR_DIS,
+    PROTOCOL_RESPONSE_ERR_LIM,
+    PROTOCOL_RESPONSE_ERR_HRD,
+    PROTOCOL_RESPONSE_ERR_EST,
+    PROTOCOL_RESPONSE_ERR_POS,
+    PROTOCOL_RESPONSE_ERR_COM,
+    PROTOCOL_RESPONSE_ERR_MOT,
+    PROTOCOL_RESPONSE_ERR_CAN,
+    PROTOCOL_RESPONSE_ERR_CMD,
+    PROTOCOL_RESPONSE_ERR_SYS
+} protocol_response_type_t;
+
+typedef struct
+{
+    protocol_response_type_t type;
+    float position_mm;
+    float velocity_mm_s;
+    float acceleration_mm_s2;
+} protocol_response_t;
+
+/** Parses at most one complete host request without blocking. */
+bool protocol_read_request(protocol_request_t *request);
+
+/** Queues exactly one newline-terminated response. */
+bool protocol_write_response(const protocol_response_t *response);
 
 #endif

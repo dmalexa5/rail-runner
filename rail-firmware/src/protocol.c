@@ -1,115 +1,138 @@
 #include "protocol.h"
 
-#include <ctype.h>
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "can.h"
-#include "control.h"
 #include "uart.h"
 
-static void trim_line(char *line)
+static bool parse_setpoint(const char *text, float *value)
 {
-    size_t length = strlen(line);
-    while (length > 0U && isspace((unsigned char)line[length - 1U]))
+    const char *cursor = text;
+    int sign = 1;
+    int whole = 0;
+    int fraction = 0;
+    int digits = 0;
+
+    if (*cursor == '+' || *cursor == '-')
     {
-        line[--length] = '\0';
+        sign = *cursor++ == '-' ? -1 : 1;
     }
+    while (*cursor >= '0' && *cursor <= '9')
+    {
+        if (whole > 1000)
+        {
+            return false;
+        }
+        whole = whole * 10 + (*cursor++ - '0');
+        digits++;
+    }
+    if (digits == 0)
+    {
+        return false;
+    }
+    if (*cursor == '.')
+    {
+        cursor++;
+        if (*cursor < '0' || *cursor > '9')
+        {
+            return false;
+        }
+        fraction = *cursor++ - '0';
+    }
+    if (*cursor != '\0')
+    {
+        return false;
+    }
+
+    *value = (float)(sign * (whole * 10 + fraction)) / 10.0f;
+    return true;
 }
 
-static void write_status(void)
+bool protocol_read_request(protocol_request_t *request)
 {
-    control_status_t control;
-    can_status_t can;
-    char line[384];
-
-    control_get_status(&control);
-    can_get_status(&can);
-    snprintf(line, sizeof(line),
-             "s,%u,%u,%u,%ld,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%ld,%ld,%ld,%u,%u,%lx,%lu,%lu\n",
-             control.armed ? 1U : 0U,
-             control.safety_switches_ok ? 1U : 0U,
-             (unsigned int)control.fault,
-             (long)(control.torque_command_nm * 1000.0f),
-             (unsigned long)control.cycle_count,
-             (unsigned long)control.overrun_count,
-             (unsigned long)control.max_execution_cycles,
-             (unsigned long)control.arm_lease_age_ms,
-             (unsigned long)control.feedback_age_ms,
-             (unsigned long)control.feedback_sequence,
-             control.motor.valid ? 1U : 0U,
-             control.motor.id,
-             (long)(control.motor.position_rad * 1000.0f),
-             (long)(control.motor.velocity_rad_s * 1000.0f),
-             (long)(control.motor.torque_nm * 1000.0f),
-             control.motor.temperature_c,
-             control.motor.error,
-             (unsigned long)can.error,
-             (unsigned long)can.last_tx_ok,
-             (unsigned long)can.last_tx_fail);
-    uart_write(line);
-}
-
-static void write_feedback(void)
-{
-    control_status_t control;
-    char line[64];
-
-    control_get_status(&control);
-    snprintf(line, sizeof(line),
-             "f,%ld,%ld,%ld\n",
-             (long)(control.motor.position_rad * 1000.0f),
-             (long)(control.motor.velocity_rad_s * 1000.0f),
-             (long)(control.motor.torque_nm * 1000.0f));
-    uart_write(line);
-}
-
-void protocol_handle_line(char *line)
-{
-    if (line == 0)
+    char line[24];
+    if (request == 0 || !uart_read_line(line, sizeof(line)))
     {
-        return;
+        return false;
     }
 
-    trim_line(line);
-    if (strcmp(line, "a") == 0)
+    request->value_mm_s = 0.0f;
+    if (strcmp(line, "cal 0") == 0)
     {
-        uart_write(control_arm() ? "k,a\n" : "e,a\n");
+        request->type = PROTOCOL_REQUEST_CALIBRATE;
     }
-    else if (strcmp(line, "d") == 0)
+    else if (strcmp(line, "dis 0") == 0)
     {
-        control_disarm();
-        uart_write("k,d\n");
+        request->type = PROTOCOL_REQUEST_DISARM;
     }
-    else if (strncmp(line, "t,", 2) == 0)
+    else if (strncmp(line, "sp ", 3) == 0 &&
+             parse_setpoint(line + 3, &request->value_mm_s))
     {
-        char *end = 0;
-        float torque_nm = strtof(line + 2, &end);
-        if (end == line + 2 || *end != '\0' || !isfinite(torque_nm))
-        {
-            uart_write("e,i\n");
-        }
-        else if (!control_set_torque(torque_nm))
-        {
-            uart_write("e,r\n");
-        }
-        else
-        {
-            uart_write("k,t\n");
-        }
-    }
-    else if (strcmp(line, "s") == 0)
-    {
-        write_status();
-    }
-    else if (strcmp(line, "f") == 0)
-    {
-        write_feedback();
+        request->type = PROTOCOL_REQUEST_SETPOINT;
     }
     else
     {
-        uart_write("e,c\n");
+        request->type = PROTOCOL_REQUEST_INVALID;
     }
+    return true;
+}
+
+static void format_tenth(char *buffer, size_t size, float value)
+{
+    long tenths = (long)(value >= 0.0f ? value * 10.0f + 0.5f :
+                                      value * 10.0f - 0.5f);
+    if (tenths == 0L)
+    {
+        snprintf(buffer, size, "0.0");
+        return;
+    }
+
+    unsigned long magnitude = tenths < 0L ?
+                              (unsigned long)(-tenths) : (unsigned long)tenths;
+    snprintf(buffer, size, "%s%lu.%lu", tenths < 0L ? "-" : "",
+             magnitude / 10UL, magnitude % 10UL);
+}
+
+bool protocol_write_response(const protocol_response_t *response)
+{
+    static const char *const fixed[] = {
+        [PROTOCOL_RESPONSE_CALIBRATING] = "cal 0\n",
+        [PROTOCOL_RESPONSE_DISARMED] = "dis 0\n",
+        [PROTOCOL_RESPONSE_ERR_CAL] = "err cal\n",
+        [PROTOCOL_RESPONSE_ERR_DIS] = "err dis\n",
+        [PROTOCOL_RESPONSE_ERR_LIM] = "err lim\n",
+        [PROTOCOL_RESPONSE_ERR_HRD] = "err hrd\n",
+        [PROTOCOL_RESPONSE_ERR_EST] = "err est\n",
+        [PROTOCOL_RESPONSE_ERR_POS] = "err pos\n",
+        [PROTOCOL_RESPONSE_ERR_COM] = "err com\n",
+        [PROTOCOL_RESPONSE_ERR_MOT] = "err mot\n",
+        [PROTOCOL_RESPONSE_ERR_CAN] = "err can\n",
+        [PROTOCOL_RESPONSE_ERR_CMD] = "err cmd\n",
+        [PROTOCOL_RESPONSE_ERR_SYS] = "err sys\n",
+    };
+    char line[64];
+    char position[16];
+    char velocity[16];
+    char acceleration[16];
+
+    if (response == 0 || response->type == PROTOCOL_RESPONSE_NONE)
+    {
+        return true;
+    }
+    if (response->type == PROTOCOL_RESPONSE_ACK)
+    {
+        format_tenth(position, sizeof(position), response->position_mm);
+        format_tenth(velocity, sizeof(velocity), response->velocity_mm_s);
+        format_tenth(acceleration, sizeof(acceleration),
+                     response->acceleration_mm_s2);
+        snprintf(line, sizeof(line), "ack %s %s %s\n",
+                 position, velocity, acceleration);
+        return uart_write(line);
+    }
+    if ((unsigned int)response->type >=
+        sizeof(fixed) / sizeof(fixed[0]) || fixed[response->type] == 0)
+    {
+        return false;
+    }
+    return uart_write(fixed[response->type]);
 }

@@ -36,43 +36,41 @@ bool can_init(void)
     filter.FilterBank = 0;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterIdHigh = 0;
-    filter.FilterIdLow = 0;
-    filter.FilterMaskIdHigh = 0;
-    filter.FilterMaskIdLow = 0;
     filter.FilterFIFOAssignment = CAN_RX_FIFO0;
     filter.FilterActivation = ENABLE;
     filter.SlaveStartFilterBank = 14;
 
-    if (HAL_CAN_ConfigFilter(&hcan1, &filter) != HAL_OK)
-    {
-        return false;
-    }
-
-    if (HAL_CAN_Start(&hcan1) != HAL_OK)
+    if (HAL_CAN_ConfigFilter(&hcan1, &filter) != HAL_OK ||
+        HAL_CAN_Start(&hcan1) != HAL_OK)
     {
         return false;
     }
 
     HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
-
     return HAL_CAN_ActivateNotification(&hcan1,
                                          CAN_IT_RX_FIFO0_MSG_PENDING) == HAL_OK;
 }
 
-bool can_send(uint32_t id, const uint8_t data[8])
+bool can_send(uint32_t id, const uint8_t *data, uint8_t len)
 {
     CAN_TxHeaderTypeDef header = {0};
     uint32_t mailbox = 0;
-    uint8_t payload[8];
+    uint8_t payload[8] = {0};
 
-    memcpy(payload, data, sizeof(payload));
+    if (len > sizeof(payload) || (len > 0U && data == 0))
+    {
+        return false;
+    }
+    if (len > 0U)
+    {
+        memcpy(payload, data, len);
+    }
 
     header.ExtId = id;
     header.IDE = CAN_ID_EXT;
     header.RTR = CAN_RTR_DATA;
-    header.DLC = 8;
+    header.DLC = len;
     header.TransmitGlobalTime = DISABLE;
 
     if (HAL_CAN_AddTxMessage(&hcan1, &header, payload, &mailbox) == HAL_OK)
@@ -87,7 +85,7 @@ bool can_send(uint32_t id, const uint8_t data[8])
 
 bool can_read_latest(can_frame_t *frame, uint32_t *sequence)
 {
-    if (frame == 0 || sequence == 0 || latest_sequence == 0)
+    if (frame == 0 || sequence == 0 || latest_sequence == 0U)
     {
         return false;
     }
@@ -100,7 +98,6 @@ bool can_read_latest(can_frame_t *frame, uint32_t *sequence)
     {
         __enable_irq();
     }
-
     return true;
 }
 
@@ -120,12 +117,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     {
         CAN_RxHeaderTypeDef header = {0};
         can_frame_t frame = {0};
-
-        if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &header, frame.data) != HAL_OK)
+        if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &header,
+                                 frame.data) != HAL_OK)
         {
             return;
         }
-
         if (header.IDE != CAN_ID_EXT || header.RTR != CAN_RTR_DATA)
         {
             continue;

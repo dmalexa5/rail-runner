@@ -2,15 +2,12 @@
 #include "can.h"
 #include "control.h"
 #include "control_timer.h"
-#include "protocol.h"
 #include "uart.h"
 
-static void fatal_error(const char *message)
+static void fatal_error(void)
 {
-    uart_write(message);
     while (1)
     {
-        uart_service();
         HAL_GPIO_TogglePin(BOARD_LED_GPIO_PORT, BOARD_LED_PIN);
         HAL_Delay(100U);
     }
@@ -18,7 +15,6 @@ static void fatal_error(const char *message)
 
 int main(void)
 {
-    char line[32];
     uint32_t last_led_ms = 0U;
 
     board_init();
@@ -30,16 +26,14 @@ int main(void)
     }
     if (!can_init())
     {
-        fatal_error("ERR can_init\r\n");
+        fatal_error();
     }
 
     control_init();
     if (!control_timer_init() || !control_timer_start())
     {
-        fatal_error("ERR timer_init\r\n");
+        fatal_error();
     }
-
-    uart_write("READY rail-firmware at 1khz\r\n");
 
     while (1)
     {
@@ -48,10 +42,6 @@ int main(void)
             continue;
         }
 
-        if (uart_read_line(line, sizeof(line)))
-        {
-            protocol_handle_line(line);
-        }
         uart_service();
 
         uint32_t now = HAL_GetTick();

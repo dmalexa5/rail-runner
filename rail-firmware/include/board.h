@@ -10,7 +10,6 @@
 
 #define BOARD_CAN1_RX_GPIO_PORT GPIOB
 #define BOARD_CAN1_RX_PIN GPIO_PIN_8
-#define BOARD_CAN1_TX_GPIO_PORT GPIOB
 #define BOARD_CAN1_TX_PIN GPIO_PIN_9
 #define BOARD_CAN1_GPIO_AF GPIO_AF9_CAN1
 
@@ -19,19 +18,23 @@
 #define BOARD_UART_RX_PIN GPIO_PIN_3
 #define BOARD_UART_GPIO_AF GPIO_AF7_USART2
 
-/*
- * The safety switches are normally closed to ground. A low input means the
- * switch and its wiring are healthy; a high input means pressed or open and
- * must inhibit motor torque.
- */
-#define BOARD_SAFETY_GPIO_PORT GPIOA
-#define BOARD_SAFETY_1_PIN GPIO_PIN_0
-#define BOARD_SAFETY_2_PIN GPIO_PIN_1
+#define BOARD_HARD_LIMIT_GPIO_PORT GPIOA
+#define BOARD_HARD_LIMIT_PIN GPIO_PIN_0
+#define BOARD_ESTOP_GPIO_PORT GPIOA
+#define BOARD_ESTOP_PIN GPIO_PIN_1
+#define BOARD_OPTICAL_MIN_GPIO_PORT GPIOC
+#define BOARD_OPTICAL_MIN_PIN GPIO_PIN_0
 
-/** Initializes the HAL and all board-level GPIO pin assignments. */
+/** Initializes the HAL and drive-board GPIO assignments. */
 void board_init(void);
 
-/** Returns true only while both normally-closed safety inputs read low. */
-bool board_safety_switches_ok(void);
+/** Returns true while the normally-closed hard-limit chain is healthy. */
+bool board_hard_limits_ok(void);
+
+/** Returns true while the normally-closed estop chain is healthy. */
+bool board_estop_ok(void);
+
+/** Returns true while the normally-closed MIN optical switch is asserted. */
+bool board_optical_min_active(void);
 
 #endif

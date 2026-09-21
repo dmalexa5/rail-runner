@@ -6,30 +6,30 @@
 
 #include "can.h"
 
-#define AK60_DEFAULT_CAN_ID 2U
+#define AK60_CAN_ID 1U
+#define AK60_POLE_PAIRS 14.0f
+#define AK60_REDUCTION 6.0f
+#define AK60_RATED_OUTPUT_RPM 490.0f
 
 typedef struct
 {
-    uint8_t id;
-    uint32_t can_id;
-    uint8_t raw[8];
-    float position_rad;
-    float velocity_rad_s;
-    float torque_nm;
-    uint8_t temperature_c;
+    int16_t position_counts;
+    int16_t velocity_erpm;
+    int16_t current_centiamps;
+    int8_t temperature_c;
     uint8_t error;
-    bool valid;
 } ak60_state_t;
 
-void ak60_set_id(uint32_t id);
-uint32_t ak60_get_id(void);
-bool ak60_power_on(void);
-bool ak60_power_off(void);
+/** Sends a servo-mode velocity command in electrical RPM. */
+bool ak60_send_velocity_erpm(float velocity_erpm);
 
-/** Sends one MIT-mode torque command, clamped to the AK60 protocol range. */
-bool ak60_send_torque_nm(float torque_nm);
+/** Selects servo current mode with a zero-amp command. */
+bool ak60_send_zero_current(void);
 
-/** Decodes feedback addressed to the configured motor ID. */
+/** Sets the current servo-mode position as the temporary origin. */
+bool ak60_set_temporary_origin(void);
+
+/** Decodes one periodic servo-mode feedback frame for motor ID 1. */
 bool ak60_parse_feedback(const can_frame_t *frame, ak60_state_t *state);
 
 #endif
