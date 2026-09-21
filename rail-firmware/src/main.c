@@ -4,6 +4,11 @@
 #include "control_timer.h"
 #include "uart.h"
 
+#ifdef BOARD_TELEOP
+#include "joystick.h"
+#include "stepper.h"
+#endif
+
 static void fatal_error(void)
 {
     while (1)
@@ -24,10 +29,15 @@ int main(void)
         {
         }
     }
+#ifdef BOARD_DRIVE
     if (!can_init())
     {
         fatal_error();
     }
+#else
+    (void)stepper_init();
+    (void)joystick_init();
+#endif
 
     control_init();
     if (!control_timer_init() || !control_timer_start())

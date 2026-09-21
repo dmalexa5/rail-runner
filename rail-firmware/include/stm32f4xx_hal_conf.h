@@ -6,8 +6,13 @@ extern "C" {
 #endif
 
 #define HAL_MODULE_ENABLED
+#ifdef BOARD_TELEOP
+#define HAL_ADC_MODULE_ENABLED
+#endif
 #define HAL_CORTEX_MODULE_ENABLED
+#ifdef BOARD_DRIVE
 #define HAL_CAN_MODULE_ENABLED
+#endif
 #define HAL_DMA_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
@@ -104,6 +109,10 @@ extern "C" {
 
 #ifdef HAL_DMA_MODULE_ENABLED
 #include "stm32f4xx_hal_dma.h"
+#endif
+
+#ifdef HAL_ADC_MODULE_ENABLED
+#include "stm32f4xx_hal_adc.h"
 #endif
 
 #ifdef HAL_FLASH_MODULE_ENABLED

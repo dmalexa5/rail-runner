@@ -89,28 +89,30 @@ This communication protocol runs inside a single nonblocking hotloop released by
 
 ## The NEMA17 system
 
-The teleoperation linear track is driven by a nema17 stepper motor and tb6600 driver. There is no estop for this system, and only a single limit switch for the belt driven linear slide. The stepper pulses are sent via the common timer-base frequency-to-velocity control architecture.
+The teleoperation track uses a NEMA17 stepper, a TB6600 driver configured for 1600 pulses/rev, a 20 mm/rev belt drive, and a local analog joystick. It has one normally-closed MIN switch and no estop. Position is the commanded pulse count and may drift if the motor skips steps.
 
 ### Motion
 
-The same motion hardcodes apply, scaled down for the linear track:
-- `SCALE` is 0.5, as the teleop track is half the size of the  
-- There is no `PITCH` param, only `MM_PER_REV` 20 mm
+The drive motion limits and jerk-limited profile are reused in virtual drive coordinates. `SCALE` is 0.5, so the 250 mm physical track reports 0--500 mm, ±16 physical mm/s reports ±32 mm/s, and each STEP pulse is 0.025 reported mm. Normal motion brakes within the 2--498 mm virtual envelope; an outward joystick command at an endpoint is clamped to zero.
+
+The 3.3 V joystick is sampled at 1 kHz. Its selected axis maps linearly outside a 5% center deadband to ±32 virtual mm/s. Motion is armed only after the joystick has entered the deadband following calibration. ADC initialization failure or 20 ms without a conversion is `err joy`.
+
+Teleop pins are PA0/TIM5_CH1 STEP, PB0 DIR, PB1 ENA, PC0 MIN, PC1 joystick ADC, and PA2/PA3 USART2. STEP, DIR-positive, and ENA are active high. PC0 uses a pull-up; an open circuit or asserted normally-closed switch is active.
 
 ### Serial commands
 
-The serial interface is similar to the AK60 interface, but is simplified for an open-loop stepper motor controlled rail (no feedback). Also, the teleop rail velocity is commanded with a joystick module- we rely on the motion manager to prevent velocities that `rail-drive` cannot keep up with.
+USART2 runs at 230400 baud with strict request/reply, LF or CRLF requests, and LF replies. Position and velocity use one decimal place.
 
 `<rec>` <-- `<reply>`
 
-- `cal` <-- `cal` while calibrating, then `ack <pos> <vel> 0.0` when done
+- `cal` <-- `cal` while calibrating, then `ack <pos> <vel>` when done
     - The host must continue sending `cal` during calibration
-    - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the current position to 0 at that edge.
-    - Brake to zero commanded velocity and acceleration. Calibration completes in active zero-velocity mode at the resulting positive position.
-- `dis` <-- `dis` immediately. Continue with a jerk-limited stop, switch to servo current mode at 0 A, invalidate calibration, and enter the deactivated state.
-- `req` <-- `ack <pos> <vel>`. Valid commands refresh a 20 ms watchdog. On timeout, stop with the normal motion limits, switch to 0 A, and latch `err com`.
-    - `pos` is an integrated counter. If stepper motor skips steps, this will drift. Ok for now.
-    - `vel` is the scaled commanded velocity, 1:1 to what `rail-drive` will be tracking
+    - Seek MIN at -10 virtual mm/s, or back off immediately if MIN is already asserted.
+    - Stop STEP on assertion, then reverse with the normal motion limits. Snapshot the first clear sample, require five consecutive clear samples, and set that edge to zero.
+    - Brake to zero. Calibration completes at the resulting positive position.
+    - Seeking is limited to 500 virtual mm and backoff to 10 virtual mm. Exceeding either immediately disables the driver and latches `err cal` until `dis`.
+- `dis` <-- `dis` after a jerk-limited stop has completed and ENA is disabled. The host must allow 3 seconds for the reply. Calibration is invalidated.
+- `req` <-- `ack <pos> <vel>`. `pos` is the scaled STEP count and `vel` is the scaled profile command sent for `rail-drive` to track. Valid requests refresh a 20 ms watchdog. Timeout performs a limited stop, disables ENA, and latches `err com`.
 
 ### Error responses
 
@@ -119,11 +121,15 @@ The serial interface is similar to the AK60 interface, but is simplified for an 
 | `err cal` | Non-`cal` during calibration | Deactivate | No |
 | `err dis` | Non-`cal` while deactivated | Stay deactivated | No |
 | `err hrd` | Limit switch pressed during operation | Disable motor; manual reset | Yes |
-| `err pos` | Motion farther outside 2--498 mm | Hold zero; allow inward motion | No |
 | `err com` | Host command timeout | Limited stop; deactivate | Yes |
-| `err joy` | joystick failure, or 20 ms feedback loss | Disable | Yes |
+| `err joy` | ADC failure or 20 ms conversion loss | Disable | Yes |
+| `err cmd` | Malformed active-state command | Stay active; don't refresh watchdog | No |
+| `err sys` | Control overrun, UART overflow, or step-timer failure | Disable | Yes |
 
-All fatal faults invalidate calibration. 
+All fatal faults invalidate calibration. Priority is hard limit, system, joystick, then communication. A healthy `dis` clears a fault; hard-limit recovery also requires the switch to be released, and joystick recovery requires fresh ADC data.
 
 ### Hotloop
 
+TIM2 releases a nonblocking foreground control cycle at 1 kHz and detects overruns. The cycle reads one request, samples safety and joystick state, advances calibration or the motion profile, updates the step rate, and writes at most one reply.
+
+TIM5 is a separate 1 MHz, 32-bit output-compare edge scheduler. It emits 10 us STEP pulses, preserves phase when frequency changes, and counts rising edges. Direction changes only after the profile reaches zero; STEP is held low, DIR changes, and motion waits one full control cycle before restarting. PC0 EXTI stops STEP and disables ENA immediately; the foreground cycle treats this as a calibration event or an active hard-limit fault.

@@ -36,7 +36,11 @@ bool control_timer_init(void)
         return false;
     }
 
+#ifdef BOARD_TELEOP
+    HAL_NVIC_SetPriority(TIM2_IRQn, 2, 0);
+#else
     HAL_NVIC_SetPriority(TIM2_IRQn, 1, 0);
+#endif
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
     return true;
 }

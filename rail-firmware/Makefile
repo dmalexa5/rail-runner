@@ -1,7 +1,7 @@
 BOARD ?= drive
 
-ifneq ($(BOARD),drive)
-$(error Unsupported BOARD '$(BOARD)'; only BOARD=drive is implemented)
+ifeq ($(filter $(BOARD),drive teleop),)
+$(error Unsupported BOARD '$(BOARD)'; expected drive or teleop)
 endif
 
 TARGET = rail-$(BOARD)
@@ -10,8 +10,9 @@ CC      = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
 SIZE    = arm-none-eabi-size
 
-BUILD_DIR = build
-ELF = $(BUILD_DIR)/$(TARGET).elf
+BUILD_ROOT = build
+BUILD_DIR = $(BUILD_ROOT)/$(BOARD)
+ELF = $(BUILD_ROOT)/$(TARGET).elf
 
 CPU = -mcpu=cortex-m4
 FPU = -mfpu=fpv4-sp-d16
@@ -20,8 +21,13 @@ MCU = $(CPU) -mthumb $(FPU) $(FLOAT_ABI)
 
 DEFINES = \
     -DSTM32F446xx \
-    -DUSE_HAL_DRIVER \
-    -DBOARD_DRIVE
+    -DUSE_HAL_DRIVER
+
+ifeq ($(BOARD),drive)
+DEFINES += -DBOARD_DRIVE
+else
+DEFINES += -DBOARD_TELEOP
+endif
 
 CFLAGS = \
     $(MCU) \
@@ -44,11 +50,13 @@ INCLUDES = \
     -Ivendor/STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include \
     -Ivendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc
 
-SOURCES = \
-    $(wildcard src/*.c) \
+COMMON_SOURCES = \
+    src/control_timer.c \
+    src/main.c \
+    src/motion.c \
+    src/uart.c \
     vendor/STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c \
-    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_can.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c \
@@ -58,6 +66,27 @@ SOURCES = \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/syscalls.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/sysmem.c
+
+ifeq ($(BOARD),drive)
+BOARD_SOURCES = \
+    src/ak60.c \
+    src/board.c \
+    src/can.c \
+    src/control.c \
+    src/protocol.c \
+    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_can.c
+else
+BOARD_SOURCES = \
+    src/teleop/board.c \
+    src/teleop/control.c \
+    src/teleop/joystick.c \
+    src/teleop/protocol.c \
+    src/teleop/stepper.c \
+    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c \
+    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c
+endif
+
+SOURCES = $(COMMON_SOURCES) $(BOARD_SOURCES)
 
 ASM_SOURCES = \
     startup/startup_stm32f446xx.s
@@ -70,6 +99,7 @@ OBJECTS += $(addprefix $(BUILD_DIR)/,$(ASM_SOURCES:.s=.o))
 build: $(ELF)
 
 $(ELF): $(OBJECTS)
+	mkdir -p $(dir $@)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SIZE) $@
 
@@ -93,4 +123,4 @@ debug: $(ELF)
 	$(ELF)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_ROOT)
