@@ -1,0 +1,38 @@
+rail_teleop:
+  serial:
+    port:
+      type: string
+      default_value: "/dev/ttyACM1"
+      description: "Serial device connected to the teleop controller."
+      read_only: true
+    baud_rate:
+      type: int
+      default_value: 115200
+      description: "Serial link baud rate."
+      read_only: true
+      validation:
+        bounds<>: [1, 4000000]
+  command_topic:
+    type: string
+    default_value: "rail_velocity"
+    description: "Topic on which joystick velocity setpoints are published."
+    read_only: true
+  update_rate:
+    type: int
+    default_value: 500
+    description: "Joystick sampling and command publication rate in hertz."
+    read_only: true
+    validation:
+      bounds<>: [1, 1000]
+  max_velocity:
+    type: double
+    default_value: 32.0
+    description: "Velocity in millimeters per second produced by scaled joystick input."
+    validation:
+      bounds<>: [0.0, 32.0]
+  deadband:
+    type: double
+    default_value: 0.05
+    description: "Normalized joystick input magnitude treated as zero."
+    validation:
+      bounds<>: [0.0, 1.0]
