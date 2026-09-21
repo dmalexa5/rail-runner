@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rail-interface</name>
+  <name>rail_interface</name>
   <version>0.0.0</version>
-  <description>Minimal ros2_control hardware and controller skeleton for the rail.</description>
+  <description>Lifecycle nodes for the rail firmware.</description>
   <maintainer email="dmalexa5@ncsu.edu">dmalexa5</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>controller_interface</depend>
-  <depend>hardware_interface</depend>
-  <depend>pluginlib</depend>
+  <depend>generate_parameter_library</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

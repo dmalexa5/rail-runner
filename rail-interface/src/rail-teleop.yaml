@@ -7,7 +7,7 @@ rail_teleop:
       read_only: true
     baud_rate:
       type: int
-      default_value: 115200
+      default_value: 230400
       description: "Serial link baud rate."
       read_only: true
       validation:

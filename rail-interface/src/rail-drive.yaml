@@ -5,13 +5,6 @@ rail_drive:
       default_value: "/dev/ttyACM0"
       description: "Serial device connected to the drive controller."
       read_only: true
-    baud_rate:
-      type: int
-      default_value: 115200
-      description: "Serial link baud rate."
-      read_only: true
-      validation:
-        bounds<>: [1, 4000000]
   joint_name:
     type: string
     default_value: "rail_joint"
@@ -27,16 +20,10 @@ rail_drive:
     default_value: "rail_state"
     description: "Topic on which rail joint state is published."
     read_only: true
-  update_rate:
-    type: int
-    default_value: 500
-    description: "Command and state update rate in hertz."
+  calibration_timeout:
+    type: double
+    default_value: 60.0
+    description: "Maximum calibration duration in seconds."
     read_only: true
     validation:
-      bounds<>: [1, 1000]
-  command_timeout:
-    type: double
-    default_value: 0.02
-    description: "Maximum velocity command age in seconds before commanding a stop."
-    validation:
-      bounds<>: [0.0, 1.0]
+      gt<>: [0.0]
