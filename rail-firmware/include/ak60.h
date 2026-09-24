@@ -27,9 +27,6 @@ bool ak60_send_velocity_rad_s(float velocity_rad_s, float gain_kd);
 /** Sends an MIT-mode command with all five logical fields set to zero. */
 bool ak60_send_zero_torque(void);
 
-/** Sets the current motor position as the temporary origin. */
-bool ak60_set_temporary_origin(void);
-
 /** Decodes one periodic feedback frame for the configured motor ID. */
 bool ak60_parse_feedback(const can_frame_t *frame, ak60_state_t *state);
 

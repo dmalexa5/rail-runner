@@ -7,10 +7,10 @@
 #include "protocol.h"
 #include "uart.h"
 
-#define HOST_TIMEOUT_MS 20U
+#define HOST_TIMEOUT_MS 50U
+#define CALIBRATION_TIMEOUT_MS 30000U
 #define FEEDBACK_TIMEOUT_MS 10U
 #define OPTICAL_DEBOUNCE_CYCLES 5U
-#define ORIGIN_TOLERANCE_MM 0.2f
 #define TWO_PI 6.28318530718f
 
 typedef enum
@@ -26,7 +26,6 @@ typedef enum
 {
     CAL_SEEK_MIN = 0,
     CAL_BACK_OFF,
-    CAL_WAIT_ORIGIN,
     CAL_BRAKE
 } calibration_phase_t;
 
@@ -39,8 +38,7 @@ typedef enum
     FAULT_MOTOR,
     FAULT_CAN,
     FAULT_VELOCITY_LIMIT,
-    FAULT_COMMUNICATION,
-    FAULT_CALIBRATION
+    FAULT_COMMUNICATION
 } drive_fault_t;
 
 static volatile bool cycle_pending;
@@ -60,17 +58,19 @@ static float velocity_mm_s;
 static float velocity_gain_kd;
 static bool position_calibrated;
 static bool calibration_complete_pending;
-static bool origin_waiting;
+static bool calibration_error_pending;
 static bool feedback_seen;
 static bool last_motor_tx_ok;
 static uint32_t feedback_sequence;
 static uint32_t last_feedback_tick;
 static uint32_t last_host_tick;
+static uint32_t calibration_start_tick;
 static int16_t previous_position_counts;
 static ak60_state_t motor;
 
 static bool optical_candidate;
 static bool optical_stable;
+static float optical_clear_position_mm;
 static uint8_t optical_count;
 
 static protocol_response_type_t fault_response(drive_fault_t reason)
@@ -84,7 +84,6 @@ static protocol_response_type_t fault_response(drive_fault_t reason)
         case FAULT_CAN: return PROTOCOL_RESPONSE_ERR_CAN;
         case FAULT_VELOCITY_LIMIT: return PROTOCOL_RESPONSE_ERR_LIM;
         case FAULT_COMMUNICATION: return PROTOCOL_RESPONSE_ERR_COM;
-        case FAULT_CALIBRATION: return PROTOCOL_RESPONSE_ERR_CAL;
         default: return PROTOCOL_RESPONSE_NONE;
     }
 }
@@ -104,7 +103,7 @@ static void set_fault(drive_fault_t reason)
     requested_velocity_mm_s = 0.0f;
     position_calibrated = false;
     calibration_complete_pending = false;
-    origin_waiting = false;
+    calibration_error_pending = false;
 }
 
 static void begin_stop(drive_fault_t reason)
@@ -114,7 +113,7 @@ static void begin_stop(drive_fault_t reason)
     requested_velocity_mm_s = 0.0f;
     position_calibrated = false;
     calibration_complete_pending = false;
-    origin_waiting = false;
+    calibration_error_pending = false;
 }
 
 static void update_optical_switch(void)
@@ -131,6 +130,11 @@ static void update_optical_switch(void)
     {
         optical_candidate = sample;
         optical_count = 1U;
+        if (!sample)
+        {
+            /* Keep the edge position if this clear interval is confirmed. */
+            optical_clear_position_mm = position_mm;
+        }
     }
     if (optical_count >= OPTICAL_DEBOUNCE_CYCLES)
     {
@@ -155,14 +159,6 @@ static float mm_s_to_rad_s(float linear_velocity)
     return MOTOR_DIRECTION * linear_velocity * TWO_PI / PITCH;
 }
 
-static bool feedback_delta_valid(int16_t delta, uint32_t elapsed_ms)
-{
-    float counts_per_ms = AK60_RATED_OUTPUT_RPM * 360.0f /
-                          (60.0f * 1000.0f * 0.1f);
-    float allowed = counts_per_ms * (float)elapsed_ms + 2.0f;
-    return fabsf((float)delta) <= allowed;
-}
-
 static void consume_feedback(uint32_t now)
 {
     can_frame_t frame;
@@ -185,30 +181,10 @@ static void consume_feedback(uint32_t now)
         return;
     }
 
-    if (origin_waiting)
-    {
-        float origin_position = counts_to_mm(sample.position_counts);
-        if (fabsf(origin_position) > ORIGIN_TOLERANCE_MM)
-        {
-            set_fault(FAULT_MOTOR);
-            return;
-        }
-        position_mm = origin_position;
-        previous_position_counts = sample.position_counts;
-        origin_waiting = false;
-        calibration_phase = CAL_BRAKE;
-        requested_velocity_mm_s = 0.0f;
-    }
-    else if (feedback_seen)
+    if (feedback_seen)
     {
         int16_t delta = (int16_t)((uint16_t)sample.position_counts -
                                   (uint16_t)previous_position_counts);
-        uint32_t elapsed = now - last_feedback_tick;
-        if (!feedback_delta_valid(delta, elapsed))
-        {
-            set_fault(FAULT_CAN);
-            return;
-        }
         position_mm += counts_to_mm(delta);
         previous_position_counts = sample.position_counts;
     }
@@ -302,8 +278,8 @@ static void start_calibration(uint32_t now)
     state = STATE_CALIBRATING;
     position_calibrated = false;
     calibration_complete_pending = false;
-    origin_waiting = false;
-    last_host_tick = now;
+    calibration_error_pending = false;
+    calibration_start_tick = now;
     if (optical_stable)
     {
         calibration_phase = CAL_BACK_OFF;
@@ -346,7 +322,7 @@ static void handle_request(const protocol_request_t *request, uint32_t now,
     }
     if (request->type == PROTOCOL_REQUEST_INVALID_KD)
     {
-        response->type = PROTOCOL_RESPONSE_ERR_CMD;
+        response->type = PROTOCOL_RESPONSE_ERR_KD;
         return;
     }
 
@@ -392,7 +368,6 @@ static void handle_request(const protocol_request_t *request, uint32_t now,
         case STATE_CALIBRATING:
             if (request->type == PROTOCOL_REQUEST_CALIBRATE)
             {
-                last_host_tick = now;
                 response->type = PROTOCOL_RESPONSE_CALIBRATING;
             }
             else if (request->type == PROTOCOL_REQUEST_DISARM)
@@ -402,20 +377,13 @@ static void handle_request(const protocol_request_t *request, uint32_t now,
             }
             else
             {
-                set_fault(FAULT_CALIBRATION);
+                begin_stop(FAULT_NONE);
                 response->type = PROTOCOL_RESPONSE_ERR_CAL;
             }
             break;
 
         case STATE_ACTIVE:
-            if (calibration_complete_pending &&
-                request->type == PROTOCOL_REQUEST_CALIBRATE)
-            {
-                calibration_complete_pending = false;
-                last_host_tick = now;
-                response->type = PROTOCOL_RESPONSE_ACK;
-            }
-            else if (request->type == PROTOCOL_REQUEST_DISARM)
+            if (request->type == PROTOCOL_REQUEST_DISARM)
             {
                 begin_stop(FAULT_NONE);
                 response->type = PROTOCOL_RESPONSE_DISARMED;
@@ -479,13 +447,9 @@ static void update_calibration(void)
     }
     else if (calibration_phase == CAL_BACK_OFF && !optical_stable)
     {
-        if (!ak60_set_temporary_origin())
-        {
-            set_fault(FAULT_CAN);
-            return;
-        }
-        origin_waiting = true;
-        calibration_phase = CAL_WAIT_ORIGIN;
+        position_mm -= optical_clear_position_mm;
+        calibration_phase = CAL_BRAKE;
+        requested_velocity_mm_s = 0.0f;
     }
     else if (calibration_phase == CAL_BRAKE && profile_stopped())
     {
@@ -512,6 +476,7 @@ static void run_control_cycle(void)
     protocol_request_t request = {PROTOCOL_REQUEST_NONE, 0.0f, 0.0f};
     protocol_response_t response = {0};
     bool has_request = protocol_read_request(&request);
+    bool was_calibrating = state == STATE_CALIBRATING;
 
     if (uart_take_rx_overflow() || overrun_pending)
     {
@@ -526,8 +491,8 @@ static void run_control_cycle(void)
     {
         set_fault(FAULT_HARD_LIMIT);
     }
-    update_optical_switch();
     consume_feedback(now);
+    update_optical_switch();
 
     if ((state == STATE_CALIBRATING || state == STATE_ACTIVE ||
          state == STATE_STOPPING) && !feedback_fresh(now))
@@ -540,10 +505,17 @@ static void run_control_cycle(void)
         handle_request(&request, now, &response);
     }
 
-    if ((state == STATE_CALIBRATING || state == STATE_ACTIVE) &&
+    if (state == STATE_ACTIVE &&
         now - last_host_tick >= HOST_TIMEOUT_MS)
     {
         begin_stop(FAULT_COMMUNICATION);
+    }
+
+    if (state == STATE_CALIBRATING &&
+        now - calibration_start_tick >= CALIBRATION_TIMEOUT_MS)
+    {
+        begin_stop(FAULT_NONE);
+        calibration_error_pending = true;
     }
 
     update_calibration();
@@ -580,12 +552,31 @@ static void run_control_cycle(void)
         set_fault(FAULT_CAN);
     }
 
-    if (has_request)
+    if (calibration_complete_pending &&
+        response.type == PROTOCOL_RESPONSE_NONE)
+    {
+        calibration_complete_pending = false;
+        last_host_tick = now;
+        response.type = PROTOCOL_RESPONSE_ACK;
+    }
+    else if (!has_request && was_calibrating && fault != FAULT_NONE)
+    {
+        response.type = fault_response(fault);
+    }
+    else if (calibration_error_pending &&
+             response.type == PROTOCOL_RESPONSE_NONE)
+    {
+        calibration_error_pending = false;
+        response.type = PROTOCOL_RESPONSE_ERR_CAL;
+    }
+
+    if (has_request || response.type != PROTOCOL_RESPONSE_NONE)
     {
         if (fault != FAULT_NONE &&
             response.type != PROTOCOL_RESPONSE_ERR_CAL &&
             response.type != PROTOCOL_RESPONSE_ERR_LIM &&
             response.type != PROTOCOL_RESPONSE_ERR_CMD &&
+            response.type != PROTOCOL_RESPONSE_ERR_KD &&
             response.type != PROTOCOL_RESPONSE_KD)
         {
             response.type = fault_response(fault);

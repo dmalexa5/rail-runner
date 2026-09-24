@@ -101,11 +101,11 @@ bool protocol_read_request(protocol_request_t *request)
 
     request->value_mm_s = 0.0f;
     request->gain_kd = 0.0f;
-    if (strcmp(line, "cal 0") == 0)
+    if (strcmp(line, "cal") == 0)
     {
         request->type = PROTOCOL_REQUEST_CALIBRATE;
     }
-    else if (strcmp(line, "dis 0") == 0)
+    else if (strcmp(line, "dis") == 0)
     {
         request->type = PROTOCOL_REQUEST_DISARM;
     }
@@ -149,8 +149,8 @@ static void format_tenth(char *buffer, size_t size, float value)
 bool protocol_write_response(const protocol_response_t *response)
 {
     static const char *const fixed[] = {
-        [PROTOCOL_RESPONSE_CALIBRATING] = "cal 0\n",
-        [PROTOCOL_RESPONSE_DISARMED] = "dis 0\n",
+        [PROTOCOL_RESPONSE_CALIBRATING] = "cal\n",
+        [PROTOCOL_RESPONSE_DISARMED] = "dis\n",
         [PROTOCOL_RESPONSE_ERR_CAL] = "err cal\n",
         [PROTOCOL_RESPONSE_ERR_DIS] = "err dis\n",
         [PROTOCOL_RESPONSE_ERR_LIM] = "err lim\n",
@@ -161,6 +161,7 @@ bool protocol_write_response(const protocol_response_t *response)
         [PROTOCOL_RESPONSE_ERR_MOT] = "err mot\n",
         [PROTOCOL_RESPONSE_ERR_CAN] = "err can\n",
         [PROTOCOL_RESPONSE_ERR_CMD] = "err cmd\n",
+        [PROTOCOL_RESPONSE_ERR_KD] = "err kd\n",
         [PROTOCOL_RESPONSE_ERR_SYS] = "err sys\n",
     };
     char line[64];

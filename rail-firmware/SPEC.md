@@ -8,7 +8,7 @@ Both flash to STM-32 Nucleo F446RE development boards.
 
 ## The AK60-6-V3.0 system
 
-The AK60 operates in **MIT torque mode** at 48V with a max rated speed of 490 rpm. The max current in the drive has been configured to 5A. Velocity is commanded through the MIT frame with zero position target, zero position gain, zero feed-forward torque, and a velocity gain Kd that defaults to 0.100.
+The AK60 operates in **MIT torque mode** at 48V with a max rated speed of 490 rpm. Velocity is commanded through the MIT frame with zero position target, zero position gain, zero feed-forward torque, and a velocity gain Kd that defaults to 0.100.
 
 ### Motion
 
@@ -24,10 +24,10 @@ Hardcoded `#define` constants
 
 The AK60 uses CubeMars extended-ID CAN at 1 Mbps with motor ID 2 and 500 Hz feedback. The drive must already be configured for MIT torque mode, 48 V, a 5 A current cap, and zero torque after 10 ms without CAN commands. Each active command is one 8-byte packet-type-8 frame containing zero Kp, the selected Kd, zero position, output-shaft velocity in rad/s, and zero feed-forward torque. Deactivated and faulted states send the same frame with all five logical fields zero.
 
-Servo position feedback is treated as signed 0.1-degree output position with natural int16 rollover and is unwrapped in firmware. This rollover behavior and the positive motor direction must be checked on hardware before calibration.
+Servo position feedback is treated as signed 0.1-degree output position with natural int16 rollover and is unwrapped in firmware. Calibration establishes a firmware-local position origin without changing the motor's internal origin or feedback configuration. This rollover behavior and the positive motor direction must be checked on hardware before calibration.
 
-Comms with ros2 lifecycle node specified in `rail-interface/SPEC.md` occur over 230400 baud serial interface:
-- strict req/reply
+Comms with ros2 lifecycle node specified in `rail-interface/SPEC.md` occur over a 115200 baud serial interface at a 250 Hz transaction rate:
+- requests receive one reply, except that `cal` also emits its completion reply asynchronously
 - requests accept LF/CRLF
 - replies use LF
 
@@ -35,42 +35,43 @@ Generally, messages take the form:
 - `<cmd> <val>`
 - `ack <pos> <vel> <acc>` or `<status> <code>`
 
-Requests use the exact grammar `cal 0`, `dis 0`, `sp <signed-decimal>` with at most one fractional digit, or `kd <unsigned-decimal>` with at most three fractional digits.
+Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most one fractional digit, or `kd <unsigned-decimal>` with at most three fractional digits.
     - mm, mm/s, and mm/s^2 units
 
 ### Serial commands
 
 `<rec>` <-- `<reply>`
 
-- `cal 0` <-- `cal 0` while calibrating, then `ack <pos> <vel> 0.0` when done
-    - The host must continue sending `cal 0` during calibration
+- `cal` <-- `cal` while calibrating, then `ack <pos> <vel> 0.0` when done
+    - `cal` is sent once. Calibration times out after 30 seconds with `err cal`.
     - If the debounced MIN optical switch is clear, ramp to -10 mm/s until it asserts. If already asserted, begin backing off immediately.
-    - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the motor's temporary origin at that edge and require the next feedback to be within 0.2 mm of zero.
+    - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the firmware position origin to the first clear sample in that confirmed interval.
     - Brake to zero commanded velocity and acceleration. Calibration completes in active zero-velocity mode at the resulting positive measured position and does not wait for measured velocity to settle.
-- `dis 0` <-- `dis 0` immediately. Continue with a jerk-limited stop, switch to the all-zero MIT command, invalidate calibration, and enter the deactivated state.
-- `sp <vel>` <-- `ack <pos> <vel> <acc>`. Valid commands refresh a 20 ms watchdog. On timeout, stop with the normal motion limits, switch to the all-zero MIT command, and latch `err com`.
-- `kd <gain>` <-- `kd <gain>` formatted to three fractional digits. Values from 0 through 1.000 are accepted in every state, apply immediately, persist until MCU reset, and do not refresh the host watchdog or alter the current state. Malformed and out-of-range values return nonfatal `err cmd` without changing the gain.
+- `dis` <-- `dis` immediately. `dis` is sent once. Continue with a jerk-limited stop, switch to the all-zero MIT command, invalidate calibration, and enter the deactivated state.
+- `sp <vel>` <-- `ack <pos> <vel> <acc>`. Valid commands refresh a 50 ms watchdog. On timeout, stop with the normal motion limits, switch to the all-zero MIT command, and latch `err com`.
+- `kd <gain>` <-- `kd <gain>` formatted to three fractional digits. Values from 0 through 1.000 are accepted in every state, apply immediately, persist until MCU reset, and do not refresh the host watchdog or alter the current state. Malformed and out-of-range values return nonfatal `err kd` without changing the gain.
 
 
 ### Error responses
 
 | Error | Cause | Response | Fatal? |
 |---|---|---|---|
-| `err cal` | Non-`cal 0` during calibration | Deactivate | No |
-| `err dis` | Non-`cal 0` while deactivated | Stay deactivated | No |
+| `err cal` | Non-`cal` during calibration | Deactivate | No |
+| `err dis` | Non-`cal` while deactivated | Stay deactivated | No |
 | `err lim` | Setpoint exceeds velocity limit | Deactivate | Yes |
 | `err hrd` | Hardstop pressed | Disable motor; manual reset | Yes |
 | `err est` | Estop pressed | Disable motor | Yes |
 | `err pos` | Motion farther outside 2--498 mm | Hold zero; allow inward motion | No |
 | `err com` | Host command timeout | Limited stop; deactivate | Yes |
-| `err mot` | CubeMars fault or origin-reset rejection | Send all-zero MIT command | Yes |
-| `err can` | TX failure, position jump, or 10 ms feedback loss | Send all-zero MIT command | Yes |
-| `err cmd` | Malformed active-state command, or invalid `kd` in any state | Keep current state; don't refresh watchdog | No |
+| `err mot` | CubeMars fault | Send all-zero MIT command | Yes |
+| `err can` | TX failure or 10 ms feedback loss | Send all-zero MIT command | Yes |
+| `err cmd` | Malformed active-state command | Keep current state; don't refresh watchdog | No |
+| `err kd` | Invalid `kd` in any state | Keep current state; don't refresh watchdog | No |
 | `err sys` | Control overrun or UART overflow | Send all-zero MIT command | Yes |
 
 All fatal faults invalidate calibration. 
 
-Fault priority is estop, hard limit, system, motor, CAN, velocity limit, communication, then calibration/state/parser errors. A healthy `dis 0` clears a pending firmware fault without first reporting it; motor and CAN faults require fresh fault-free feedback. Hard-limit and estop recovery requires physical reset, `dis 0`, and a new calibration.
+Fault priority is estop, hard limit, system, motor, CAN, velocity limit, communication, then calibration/state/parser errors. A healthy `dis` clears a pending firmware fault without first reporting it; motor and CAN faults require fresh fault-free feedback. Hard-limit and estop recovery requires physical reset, `dis`, and a new calibration.
 
 The MIN and MAX hard-limit switches share a normally-open, active-low input sensed on PA0. The normally-closed estop relay chain is sensed on PA1. Both independently remove motor power while leaving the Nucleo powered. The normally-open, active-low MIN optical calibration switch is sensed on PC0. Emergency inputs are acted on immediately; only the optical input is debounced.
 
@@ -113,7 +114,7 @@ when its normally-closed contact is healthy and high when the contact opens.
 The relay contacts must be voltage-free; never apply motor voltage to a Nucleo pin.
 
 USART2 is connected to the onboard ST-LINK virtual COM port by default and runs at
-230400 baud, 8 data bits, no parity, and 1 stop bit.
+115200 baud, 8 data bits, no parity, and 1 stop bit.
 No jumper wires are required for the normal USB serial connection.
 Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
 to avoid contention with the ST-LINK virtual COM port.
@@ -134,7 +135,7 @@ Teleop pins are PA0/TIM5_CH1 STEP, PB0 DIR, PB1 ENA, PC0 MIN, PC1 joystick ADC, 
 
 ### Serial commands
 
-USART2 runs at 230400 baud with strict request/reply, LF or CRLF requests, and LF replies. Position and velocity use one decimal place.
+USART2 runs at 115200 baud with strict request/reply, LF or CRLF requests, and LF replies. Position and velocity use one decimal place.
 
 `<rec>` <-- `<reply>`
 
@@ -195,7 +196,7 @@ Power the joystick from +3V3 and GND, and ensure its selected-axis output remain
 0 V and 3.3 V before connecting it to A4.
 
 USART2 is connected to the onboard ST-LINK virtual COM port by default and runs at
-230400 baud, 8 data bits, no parity, and 1 stop bit.
+115200 baud, 8 data bits, no parity, and 1 stop bit.
 No jumper wires are required for the normal USB serial connection.
 Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
 to avoid contention with the ST-LINK virtual COM port.

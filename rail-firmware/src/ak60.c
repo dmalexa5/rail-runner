@@ -1,7 +1,6 @@
 #include "ak60.h"
 
 #define AK60_PACKET_MIT 8U
-#define AK60_PACKET_ORIGIN 5U
 #define AK60_PACKET_FEEDBACK 0x29U
 #define AK60_P_MIN (-12.56f)
 #define AK60_P_MAX 12.56f
@@ -61,12 +60,6 @@ bool ak60_send_velocity_rad_s(float velocity_rad_s, float gain_kd)
 bool ak60_send_zero_torque(void)
 {
     return ak60_send_velocity_rad_s(0.0f, 0.0f);
-}
-
-bool ak60_set_temporary_origin(void)
-{
-    uint8_t mode = 0U;
-    return can_send((AK60_PACKET_ORIGIN << 8) | AK60_CAN_ID, &mode, 1U);
 }
 
 bool ak60_parse_feedback(const can_frame_t *frame, ak60_state_t *state)

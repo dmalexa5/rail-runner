@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Interactive serial console and live plot for the rail drive board."""
+"""Interactive serial debugger for the rail drive board."""
 
 from __future__ import annotations
 
 import argparse
-from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import math
@@ -16,14 +15,10 @@ import time
 from typing import Any
 
 
-BAUD_RATE = 230400
-TRANSACTION_PERIOD_S = 0.002
+BAUD_RATE = 115200
+TRANSACTION_PERIOD_S = 0.004
 REPLY_TIMEOUT_S = 0.050
-CALIBRATION_TIMEOUT_S = 60.0
 SHUTDOWN_TIMEOUT_S = 1.0
-HISTORY_SECONDS = 30.0
-PLOT_PERIOD_MS = 50
-STATUS_PERIOD_S = 1.0
 MAX_REPLY_BYTES = 96
 MAX_VELOCITY_MM_S = Decimal("32.0")
 MAX_KD = Decimal("1.000")
@@ -46,6 +41,7 @@ KNOWN_ERRORS = {
     "err mot",
     "err can",
     "err cmd",
+    "err kd",
     "err sys",
 }
 
@@ -73,6 +69,8 @@ def parse_user_command(text: str) -> tuple[UserCommand | None, str | None]:
         return UserCommand("quit"), None
     if command == "help":
         return UserCommand("help"), None
+    if command == "s":
+        return UserCommand("status"), None
     if command == "dis":
         return UserCommand("dis"), None
     if command == "cal":
@@ -122,8 +120,8 @@ def format_kd(value: Decimal) -> str:
     return f"kd {value.quantize(Decimal('0.001')):.3f}\n"
 
 
-def parse_ack(reply: str) -> tuple[float, float] | None:
-    """Return position and velocity from either supported ACK shape."""
+def parse_ack(reply: str) -> tuple[float, float, float | None] | None:
+    """Return position, velocity, and optional acceleration from an ACK."""
     match = ACK_RE.fullmatch(reply)
     if match is None:
         return None
@@ -133,18 +131,17 @@ def parse_ack(reply: str) -> tuple[float, float] | None:
         return None
     if not all(math.isfinite(value) for value in values):
         return None
-    return values[0], values[1]
+    acceleration = values[2] if len(values) == 3 else None
+    return values[0], values[1], acceleration
 
 
 class SharedState:
-    """Small synchronized state shared by serial, input, and GUI threads."""
+    """Small synchronized state shared by serial and input threads."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.started = time.monotonic()
-        self.samples: deque[tuple[float, float, float]] = deque()
         self.mode = "starting"
-        self.latest: tuple[float, float] | None = None
+        self.latest: tuple[float, float, float | None] | None = None
         self.fault: str | None = None
         self.failed = False
         self.quit_requested = threading.Event()
@@ -157,19 +154,15 @@ class SharedState:
             self.fault = fault
         return changed
 
-    def clear_history(self) -> None:
+    def clear_sample(self) -> None:
         with self.lock:
-            self.samples.clear()
             self.latest = None
 
-    def add_sample(self, position: float, velocity: float) -> None:
-        elapsed = time.monotonic() - self.started
+    def add_sample(
+        self, position: float, velocity: float, acceleration: float | None
+    ) -> None:
         with self.lock:
-            self.samples.append((elapsed, position, velocity))
-            cutoff = elapsed - HISTORY_SECONDS
-            while self.samples and self.samples[0][0] < cutoff:
-                self.samples.popleft()
-            self.latest = (position, velocity)
+            self.latest = (position, velocity, acceleration)
             self.fault = None
 
     def mark_failed(self) -> None:
@@ -178,31 +171,18 @@ class SharedState:
 
     def snapshot(
         self,
-    ) -> tuple[
-        float,
-        list[float],
-        list[float],
-        list[float],
-        str,
-        tuple[float, float] | None,
-        str | None,
-    ]:
-        elapsed = time.monotonic() - self.started
-        cutoff = elapsed - HISTORY_SECONDS
+    ) -> tuple[str, tuple[float, float, float | None] | None, str | None]:
         with self.lock:
-            samples = [sample for sample in self.samples if sample[0] >= cutoff]
             mode = self.mode
             latest = self.latest
             fault = self.fault
-        times = [sample[0] for sample in samples]
-        positions = [sample[1] for sample in samples]
-        velocities = [sample[2] for sample in samples]
-        return elapsed, times, positions, velocities, mode, latest, fault
+        return mode, latest, fault
 
 
 def print_help() -> None:
     emit(
-        "Commands: dis | cal | sp <mm/s> | kd <gain> | help | quit (or q)\n"
+        "Commands: dis | cal | sp <mm/s> | kd <gain> | s | help | quit (or q)\n"
+        "  s prints the latest position, velocity, acceleration, and fault state.\n"
         "  Setpoints must be within -32.0..32.0 and exactly representable to 0.1.\n"
         "  Kd must be within 0.000..1.000 with up to 3 decimal places."
     )
@@ -227,6 +207,8 @@ def input_loop(commands: queue.Queue[UserCommand], shared: SharedState) -> None:
             continue
         elif command.kind == "help":
             print_help()
+        elif command.kind == "status":
+            update_terminal_status(shared)
         elif command.kind == "quit":
             shared.quit_requested.set()
             return
@@ -234,13 +216,8 @@ def input_loop(commands: queue.Queue[UserCommand], shared: SharedState) -> None:
             commands.put(command)
 
 
-def transact(port: Any, request: str) -> str:
-    """Perform one bounded, newline-delimited request/reply transaction."""
-    payload = request.encode("ascii")
-    written = port.write(payload)
-    if written != len(payload):
-        raise OSError("incomplete serial write")
-
+def read_reply(port: Any) -> str:
+    """Read one bounded, newline-delimited reply."""
     deadline = time.monotonic() + REPLY_TIMEOUT_S
     reply = bytearray()
     while len(reply) <= MAX_REPLY_BYTES:
@@ -262,15 +239,28 @@ def transact(port: Any, request: str) -> str:
     raise ValueError("reply exceeds maximum length")
 
 
+def transact(port: Any, request: str) -> str:
+    """Perform one bounded, newline-delimited request/reply transaction."""
+    payload = request.encode("ascii")
+    written = port.write(payload)
+    if written != len(payload):
+        raise OSError("incomplete serial write")
+    return read_reply(port)
+
+
 def update_terminal_status(shared: SharedState) -> None:
-    _, _, _, _, mode, latest, fault = shared.snapshot()
-    if mode == "active" and latest is not None:
-        detail = f"pos={latest[0]:.1f} mm  vel={latest[1]:.1f} mm/s"
+    mode, latest, fault = shared.snapshot()
+    if latest is not None:
+        acceleration = (
+            f"{latest[2]:.1f} mm/s^2" if latest[2] is not None else "--"
+        )
+        detail = (
+            f"pos={latest[0]:.1f} mm  vel={latest[1]:.1f} mm/s  "
+            f"acc={acceleration}"
+        )
     else:
-        detail = "pos=--  vel=-- (no telemetry)"
-    if fault is not None:
-        detail += f"  fault={fault}"
-    emit(f"[{mode}] {detail}")
+        detail = "pos=--  vel=--  acc=--"
+    emit(f"[{mode}] {detail}  fault={fault or 'none'}")
 
 
 def apply_command(
@@ -287,17 +277,17 @@ def apply_command(
 
     if command.kind == "dis":
         shared.set_mode("disabled")
-        emit("command: continuously streaming dis 0")
-        return "dis", False, Decimal("0.0"), None, None
+        emit("command: dis")
+        return "dis", False, Decimal("0.0"), None, "dis\n"
 
     if command.kind == "cal":
         if mode != "dis":
             emit("cal rejected: enter 'dis' first and allow the drive to stop")
             return mode, calibrated, setpoint, None, None
-        shared.clear_history()
+        shared.clear_sample()
         shared.set_mode("calibrating")
-        emit("command: calibrating (60 second timeout)")
-        return "cal", False, setpoint, time.monotonic(), None
+        emit("command: calibrating (30 second firmware timeout)")
+        return "cal", False, setpoint, None, "cal\n"
 
     if command.kind == "sp":
         if not calibrated:
@@ -317,12 +307,10 @@ def apply_command(
     return mode, calibrated, setpoint, None, None
 
 
-def request_for(mode: str, setpoint: Decimal) -> str:
-    if mode == "cal":
-        return "cal 0\n"
+def request_for(mode: str, setpoint: Decimal) -> str | None:
     if mode == "sp":
         return format_setpoint(setpoint)
-    return "dis 0\n"
+    return None
 
 
 def process_reply(
@@ -342,17 +330,17 @@ def process_reply(
 
         calibrated = False
         if shared.set_mode("disabled", fault=reply):
-            emit(f"firmware returned {reply}; switching to dis 0")
+            emit(f"firmware returned {reply}; switching to dis")
         return "dis", calibrated, Decimal("0.0"), True
 
     if mode == "dis":
-        if reply != "dis 0":
+        if reply != "dis":
             return mode, calibrated, setpoint, False
         shared.set_mode("disabled")
         return mode, calibrated, setpoint, True
 
     if mode == "cal":
-        if reply == "cal 0":
+        if reply == "cal":
             shared.set_mode("calibrating")
             return mode, calibrated, setpoint, True
         sample = parse_ack(reply)
@@ -375,7 +363,7 @@ def verify_disable(port: Any, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            if transact(port, "dis 0\n") == "dis 0":
+            if transact(port, "dis\n") == "dis":
                 return True
         except (OSError, TimeoutError, ValueError):
             pass
@@ -396,9 +384,7 @@ def serial_loop(
     mode = "dis"
     calibrated = False
     setpoint = Decimal("0.0")
-    calibration_started: float | None = None
     next_request = time.monotonic()
-    next_status = next_request + STATUS_PERIOD_S
 
     try:
         port = serial_module.Serial(
@@ -416,59 +402,54 @@ def serial_loop(
         )
         port.reset_input_buffer()
         port.reset_output_buffer()
+        if transact(port, "dis\n") != "dis":
+            raise ValueError("drive did not acknowledge initial disable")
         shared.set_mode("disabled")
-        emit(f"opened {port_path} at {BAUD_RATE} baud; streaming dis 0")
+        emit(f"opened {port_path} at {BAUD_RATE} baud; drive disabled")
 
         while not shared.quit_requested.is_set():
-            old_mode = mode
-            mode, calibrated, setpoint, new_calibration, one_shot = apply_command(
+            mode, calibrated, setpoint, _, one_shot = apply_command(
                 commands, shared, mode, calibrated, setpoint
             )
-            if new_calibration is not None:
-                calibration_started = new_calibration
-            elif mode != old_mode and mode != "cal":
-                calibration_started = None
-
-            now = time.monotonic()
-            if (
-                mode == "cal"
-                and calibration_started is not None
-                and now - calibration_started >= CALIBRATION_TIMEOUT_S
-            ):
-                emit("calibration timed out; switching to dis 0")
-                mode = "dis"
-                calibrated = False
-                setpoint = Decimal("0.0")
-                calibration_started = None
-                shared.set_mode("disabled", fault="calibration timeout")
 
             request = one_shot if one_shot is not None else request_for(mode, setpoint)
             try:
-                reply = transact(port, request)
-            except (OSError, TimeoutError, ValueError) as error:
+                if request is not None:
+                    reply = transact(port, request)
+                elif mode == "cal":
+                    reply = read_reply(port)
+                else:
+                    shared.quit_requested.wait(TRANSACTION_PERIOD_S)
+                    continue
+            except TimeoutError as error:
+                if mode == "cal" and request is None:
+                    continue
+                emit(f"serial communication failed: {error}")
+                communication_failed = True
+                break
+            except (OSError, ValueError) as error:
                 emit(f"serial communication failed: {error}")
                 communication_failed = True
                 break
 
             if one_shot is not None:
-                valid = reply == one_shot.strip()
-                if valid:
+                if reply in KNOWN_ERRORS:
+                    mode, calibrated, setpoint, valid = process_reply(
+                        reply, shared, mode, calibrated, setpoint
+                    )
+                else:
+                    valid = reply == one_shot.strip()
+                if valid and one_shot.startswith("kd "):
                     emit(f"gain updated: {reply}")
             else:
                 mode, calibrated, setpoint, valid = process_reply(
                     reply, shared, mode, calibrated, setpoint
                 )
             if not valid:
-                emit(f"unexpected reply to {request.strip()!r}: {reply!r}")
+                request_name = request.strip() if request is not None else "calibration"
+                emit(f"unexpected reply to {request_name!r}: {reply!r}")
                 communication_failed = True
                 break
-            if mode != "cal":
-                calibration_started = None
-
-            now = time.monotonic()
-            if now >= next_status:
-                update_terminal_status(shared)
-                next_status = now + STATUS_PERIOD_S
 
             next_request += TRANSACTION_PERIOD_S
             now = time.monotonic()
@@ -479,7 +460,7 @@ def serial_loop(
 
         if communication_failed:
             try:
-                transact(port, "dis 0\n")
+                transact(port, "dis\n")
             except (OSError, TimeoutError, ValueError):
                 pass
             shared.mark_failed()
@@ -499,30 +480,17 @@ def serial_loop(
         shared.finished.set()
 
 
-def load_dependencies() -> tuple[Any, Any]:
+def load_dependencies() -> Any:
     try:
         import serial
     except ImportError as error:
         raise RuntimeError("PySerial is required (install package 'pyserial')") from error
-    try:
-        import matplotlib
-        import matplotlib.pyplot as plt
-    except ImportError as error:
-        raise RuntimeError("Matplotlib is required (install package 'matplotlib')") from error
-
-    backend = matplotlib.get_backend().lower()
-    noninteractive = {name.lower() for name in matplotlib.rcsetup.non_interactive_bk}
-    if backend in noninteractive:
-        raise RuntimeError(
-            f"Matplotlib backend {matplotlib.get_backend()!r} is not interactive; "
-            "a graphical display is required"
-        )
-    return serial, plt
+    return serial
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Continuously command and visualize the rail drive board."
+        description="Interactively debug the rail drive board."
     )
     parser.add_argument(
         "--port",
@@ -535,25 +503,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     try:
-        serial_module, plt = load_dependencies()
-        figure, (position_axis, velocity_axis) = plt.subplots(
-            2, 1, sharex=True, figsize=(10, 7)
-        )
+        serial_module = load_dependencies()
     except Exception as error:
         print(f"serial-drive: {error}", file=sys.stderr)
         return 1
-
-    figure.canvas.manager.set_window_title("Rail drive position and velocity")
-    figure.suptitle("Rail drive: starting")
-    position_line, = position_axis.plot([], [], color="tab:blue")
-    velocity_line, = velocity_axis.plot([], [], color="tab:orange")
-    position_axis.set_ylabel("Position (mm)")
-    position_axis.set_ylim(-10.0, 510.0)
-    position_axis.grid(True)
-    velocity_axis.set_ylabel("Velocity (mm/s)")
-    velocity_axis.set_xlabel("Elapsed time (s)")
-    velocity_axis.set_ylim(-35.0, 35.0)
-    velocity_axis.grid(True)
 
     shared = SharedState()
     commands: queue.Queue[UserCommand] = queue.Queue()
@@ -569,43 +522,15 @@ def main() -> int:
         daemon=True,
     )
 
-    def update_plot() -> bool:
-        elapsed, times, positions, velocities, mode, _, fault = shared.snapshot()
-        position_line.set_data(times, positions)
-        velocity_line.set_data(times, velocities)
-        right = max(HISTORY_SECONDS, elapsed)
-        left = max(0.0, right - HISTORY_SECONDS)
-        velocity_axis.set_xlim(left, right)
-        title = f"Rail drive: {mode}"
-        if mode != "active":
-            title += " (no telemetry)"
-        if fault is not None:
-            title += f" — {fault}"
-        figure.suptitle(title)
-        figure.canvas.draw_idle()
-        if shared.finished.is_set():
-            plt.close(figure)
-            return False
-        return True
-
-    def close_window(_event: Any) -> None:
-        shared.quit_requested.set()
-
-    figure.canvas.mpl_connect("close_event", close_window)
-    timer = figure.canvas.new_timer(interval=PLOT_PERIOD_MS)
-    timer.add_callback(update_plot)
-    timer.start()
-
     print_help()
     serial_thread.start()
     terminal_thread.start()
     try:
-        plt.show(block=True)
+        shared.finished.wait()
     except KeyboardInterrupt:
         emit("interrupt received; shutting down")
     finally:
         shared.quit_requested.set()
-        plt.close(figure)
         serial_thread.join(timeout=SHUTDOWN_TIMEOUT_S + REPLY_TIMEOUT_S + 1.0)
 
     if serial_thread.is_alive():

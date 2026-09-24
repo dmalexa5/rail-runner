@@ -33,7 +33,7 @@ CFLAGS = \
     $(MCU) \
     -Wall \
     -Wextra \
-    -O2 \
+    -O0 \
     -g3 \
     -ffunction-sections \
     -fdata-sections \

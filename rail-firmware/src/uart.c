@@ -24,7 +24,7 @@ bool uart_init(void)
     __HAL_RCC_USART2_CLK_ENABLE();
 
     huart2.Instance = USART2;
-    huart2.Init.BaudRate = 230400;
+    huart2.Init.BaudRate = 115200;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
     huart2.Init.StopBits = UART_STOPBITS_1;
     huart2.Init.Parity = UART_PARITY_NONE;
@@ -37,7 +37,7 @@ bool uart_init(void)
         return false;
     }
 
-    HAL_NVIC_SetPriority(USART2_IRQn, 3, 0);
+    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART2_IRQn);
     return HAL_UART_Receive_IT(&huart2, &rx_byte, 1U) == HAL_OK;
 }
@@ -168,6 +168,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     if (HAL_UART_Receive_IT(&huart2, &rx_byte, 1U) != HAL_OK)
     {
         rx_overflow = true;
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart != &huart2)
+    {
+        return;
+    }
+
+    rx_overflow = true;
+    if (huart2.RxState == HAL_UART_STATE_READY)
+    {
+        (void)HAL_UART_Receive_IT(&huart2, &rx_byte, 1U);
     }
 }
 

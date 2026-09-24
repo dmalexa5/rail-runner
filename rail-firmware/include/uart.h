@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/** Initializes USART2 at 230400 baud with interrupt-driven RX and TX. */
+/** Initializes USART2 at 115200 baud with interrupt-driven RX and TX. */
 bool uart_init(void);
 
 /** Returns at most one complete LF- or CRLF-terminated request. */
