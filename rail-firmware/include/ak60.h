@@ -6,10 +6,11 @@
 
 #include "can.h"
 
-#define AK60_CAN_ID 1U
+#define AK60_CAN_ID 2U
 #define AK60_POLE_PAIRS 14.0f
 #define AK60_REDUCTION 6.0f
 #define AK60_RATED_OUTPUT_RPM 490.0f
+#define AK60_DEFAULT_KD 0.1f
 
 typedef struct
 {
@@ -20,16 +21,16 @@ typedef struct
     uint8_t error;
 } ak60_state_t;
 
-/** Sends a servo-mode velocity command in electrical RPM. */
-bool ak60_send_velocity_erpm(float velocity_erpm);
+/** Sends an MIT-mode output-shaft velocity command with derivative gain. */
+bool ak60_send_velocity_rad_s(float velocity_rad_s, float gain_kd);
 
-/** Selects servo current mode with a zero-amp command. */
-bool ak60_send_zero_current(void);
+/** Sends an MIT-mode command with all five logical fields set to zero. */
+bool ak60_send_zero_torque(void);
 
-/** Sets the current servo-mode position as the temporary origin. */
+/** Sets the current motor position as the temporary origin. */
 bool ak60_set_temporary_origin(void);
 
-/** Decodes one periodic servo-mode feedback frame for motor ID 1. */
+/** Decodes one periodic feedback frame for the configured motor ID. */
 bool ak60_parse_feedback(const can_frame_t *frame, ak60_state_t *state);
 
 #endif

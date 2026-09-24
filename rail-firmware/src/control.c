@@ -11,6 +11,7 @@
 #define FEEDBACK_TIMEOUT_MS 10U
 #define OPTICAL_DEBOUNCE_CYCLES 5U
 #define ORIGIN_TOLERANCE_MM 0.2f
+#define TWO_PI 6.28318530718f
 
 typedef enum
 {
@@ -56,6 +57,7 @@ static float command_velocity_mm_s;
 static float command_acceleration_mm_s2;
 static float position_mm;
 static float velocity_mm_s;
+static float velocity_gain_kd;
 static bool position_calibrated;
 static bool calibration_complete_pending;
 static bool origin_waiting;
@@ -148,10 +150,9 @@ static float erpm_to_mm_s(int16_t erpm_counts)
            (AK60_POLE_PAIRS * AK60_REDUCTION * 60.0f);
 }
 
-static float mm_s_to_erpm(float linear_velocity)
+static float mm_s_to_rad_s(float linear_velocity)
 {
-    return MOTOR_DIRECTION * linear_velocity * AK60_POLE_PAIRS *
-           AK60_REDUCTION * 60.0f / PITCH;
+    return MOTOR_DIRECTION * linear_velocity * TWO_PI / PITCH;
 }
 
 static bool feedback_delta_valid(int16_t delta, uint32_t elapsed_ms)
@@ -336,6 +337,19 @@ static void handle_request(const protocol_request_t *request, uint32_t now,
         return;
     }
 
+    if (request->type == PROTOCOL_REQUEST_SET_KD)
+    {
+        velocity_gain_kd = request->gain_kd;
+        response->type = PROTOCOL_RESPONSE_KD;
+        response->gain_kd = velocity_gain_kd;
+        return;
+    }
+    if (request->type == PROTOCOL_REQUEST_INVALID_KD)
+    {
+        response->type = PROTOCOL_RESPONSE_ERR_CMD;
+        return;
+    }
+
     if (fault != FAULT_NONE)
     {
         if (request->type == PROTOCOL_REQUEST_DISARM && fault_can_clear(now))
@@ -486,15 +500,16 @@ static bool send_motor_command(void)
 {
     if (state == STATE_DEACTIVATED || state == STATE_FAULT)
     {
-        return ak60_send_zero_current();
+        return ak60_send_zero_torque();
     }
-    return ak60_send_velocity_erpm(mm_s_to_erpm(command_velocity_mm_s));
+    return ak60_send_velocity_rad_s(mm_s_to_rad_s(command_velocity_mm_s),
+                                    velocity_gain_kd);
 }
 
 static void run_control_cycle(void)
 {
     uint32_t now = timer_ticks;
-    protocol_request_t request = {PROTOCOL_REQUEST_NONE, 0.0f};
+    protocol_request_t request = {PROTOCOL_REQUEST_NONE, 0.0f, 0.0f};
     protocol_response_t response = {0};
     bool has_request = protocol_read_request(&request);
 
@@ -569,7 +584,9 @@ static void run_control_cycle(void)
     {
         if (fault != FAULT_NONE &&
             response.type != PROTOCOL_RESPONSE_ERR_CAL &&
-            response.type != PROTOCOL_RESPONSE_ERR_LIM)
+            response.type != PROTOCOL_RESPONSE_ERR_LIM &&
+            response.type != PROTOCOL_RESPONSE_ERR_CMD &&
+            response.type != PROTOCOL_RESPONSE_KD)
         {
             response.type = fault_response(fault);
         }
@@ -586,6 +603,7 @@ static void run_control_cycle(void)
 void control_init(void)
 {
     state = STATE_DEACTIVATED;
+    velocity_gain_kd = AK60_DEFAULT_KD;
     optical_candidate = board_optical_min_active();
     optical_stable = optical_candidate;
     optical_count = OPTICAL_DEBOUNCE_CYCLES;

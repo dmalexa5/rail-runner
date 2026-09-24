@@ -43,7 +43,7 @@ void board_init(void)
 bool board_hard_limits_ok(void)
 {
     return HAL_GPIO_ReadPin(BOARD_HARD_LIMIT_GPIO_PORT,
-                            BOARD_HARD_LIMIT_PIN) == GPIO_PIN_RESET;
+                            BOARD_HARD_LIMIT_PIN) == GPIO_PIN_SET;
 }
 
 bool board_estop_ok(void)
@@ -55,5 +55,5 @@ bool board_estop_ok(void)
 bool board_optical_min_active(void)
 {
     return HAL_GPIO_ReadPin(BOARD_OPTICAL_MIN_GPIO_PORT,
-                            BOARD_OPTICAL_MIN_PIN) == GPIO_PIN_SET;
+                            BOARD_OPTICAL_MIN_PIN) == GPIO_PIN_RESET;
 }

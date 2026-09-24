@@ -4,9 +4,11 @@
 - `BOARD=teleop` targets a NEMA 17 powered teleoperation track
 Both flash to STM-32 Nucleo F446RE development boards.
 
+---
+
 ## The AK60-6-V3.0 system
 
-The AK60 operates in **servo velocity mode** at 48V with a max rated speed of 490 rpm. The max current in the drive has been configured to 5A.
+The AK60 operates in **MIT torque mode** at 48V with a max rated speed of 490 rpm. The max current in the drive has been configured to 5A. Velocity is commanded through the MIT frame with zero position target, zero position gain, zero feed-forward torque, and a velocity gain Kd that defaults to 0.100.
 
 ### Motion
 
@@ -20,7 +22,7 @@ Hardcoded `#define` constants
 - `PITCH` is 4 mm/rev
 - Safety limits use a time-optimal jerk-limited velocity profile
 
-The AK60 uses CubeMars servo CAN at 1 Mbps with motor ID 1 and 500 Hz feedback. The drive must already be configured for servo mode, 48 V, a 5 A current cap, and zero torque after 10 ms without CAN commands.
+The AK60 uses CubeMars extended-ID CAN at 1 Mbps with motor ID 2 and 500 Hz feedback. The drive must already be configured for MIT torque mode, 48 V, a 5 A current cap, and zero torque after 10 ms without CAN commands. Each active command is one 8-byte packet-type-8 frame containing zero Kp, the selected Kd, zero position, output-shaft velocity in rad/s, and zero feed-forward torque. Deactivated and faulted states send the same frame with all five logical fields zero.
 
 Servo position feedback is treated as signed 0.1-degree output position with natural int16 rollover and is unwrapped in firmware. This rollover behavior and the positive motor direction must be checked on hardware before calibration.
 
@@ -33,7 +35,7 @@ Generally, messages take the form:
 - `<cmd> <val>`
 - `ack <pos> <vel> <acc>` or `<status> <code>`
 
-Requests use the exact grammar `cal 0`, `dis 0`, or `sp <signed-decimal>` with at most one fractional digit.
+Requests use the exact grammar `cal 0`, `dis 0`, `sp <signed-decimal>` with at most one fractional digit, or `kd <unsigned-decimal>` with at most three fractional digits.
     - mm, mm/s, and mm/s^2 units
 
 ### Serial commands
@@ -45,8 +47,9 @@ Requests use the exact grammar `cal 0`, `dis 0`, or `sp <signed-decimal>` with a
     - If the debounced MIN optical switch is clear, ramp to -10 mm/s until it asserts. If already asserted, begin backing off immediately.
     - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the motor's temporary origin at that edge and require the next feedback to be within 0.2 mm of zero.
     - Brake to zero commanded velocity and acceleration. Calibration completes in active zero-velocity mode at the resulting positive measured position and does not wait for measured velocity to settle.
-- `dis 0` <-- `dis 0` immediately. Continue with a jerk-limited stop, switch to servo current mode at 0 A, invalidate calibration, and enter the deactivated state.
-- `sp <vel>` <-- `ack <pos> <vel> <acc>`. Valid commands refresh a 20 ms watchdog. On timeout, stop with the normal motion limits, switch to 0 A, and latch `err com`.
+- `dis 0` <-- `dis 0` immediately. Continue with a jerk-limited stop, switch to the all-zero MIT command, invalidate calibration, and enter the deactivated state.
+- `sp <vel>` <-- `ack <pos> <vel> <acc>`. Valid commands refresh a 20 ms watchdog. On timeout, stop with the normal motion limits, switch to the all-zero MIT command, and latch `err com`.
+- `kd <gain>` <-- `kd <gain>` formatted to three fractional digits. Values from 0 through 1.000 are accepted in every state, apply immediately, persist until MCU reset, and do not refresh the host watchdog or alter the current state. Malformed and out-of-range values return nonfatal `err cmd` without changing the gain.
 
 
 ### Error responses
@@ -60,16 +63,16 @@ Requests use the exact grammar `cal 0`, `dis 0`, or `sp <signed-decimal>` with a
 | `err est` | Estop pressed | Disable motor | Yes |
 | `err pos` | Motion farther outside 2--498 mm | Hold zero; allow inward motion | No |
 | `err com` | Host command timeout | Limited stop; deactivate | Yes |
-| `err mot` | CubeMars fault or origin-reset rejection | Set 0 A | Yes |
-| `err can` | TX failure, position jump, or 10 ms feedback loss | Set 0 A | Yes |
-| `err cmd` | Malformed active-state command | Stay active; don't refresh watchdog | No |
-| `err sys` | Control overrun or UART overflow | Set 0 A | Yes |
+| `err mot` | CubeMars fault or origin-reset rejection | Send all-zero MIT command | Yes |
+| `err can` | TX failure, position jump, or 10 ms feedback loss | Send all-zero MIT command | Yes |
+| `err cmd` | Malformed active-state command, or invalid `kd` in any state | Keep current state; don't refresh watchdog | No |
+| `err sys` | Control overrun or UART overflow | Send all-zero MIT command | Yes |
 
 All fatal faults invalidate calibration. 
 
 Fault priority is estop, hard limit, system, motor, CAN, velocity limit, communication, then calibration/state/parser errors. A healthy `dis 0` clears a pending firmware fault without first reporting it; motor and CAN faults require fresh fault-free feedback. Hard-limit and estop recovery requires physical reset, `dis 0`, and a new calibration.
 
-The MIN and MAX hard-limit switches share a normally-closed latching motor-power relay chain sensed on PA0. The normally-closed estop relay chain is sensed on PA1. Both independently remove motor power while leaving the Nucleo powered. The normally-closed MIN optical calibration switch is sensed on PC0. Emergency inputs are acted on immediately; only the optical input is debounced.
+The MIN and MAX hard-limit switches share a normally-open, active-low input sensed on PA0. The normally-closed estop relay chain is sensed on PA1. Both independently remove motor power while leaving the Nucleo powered. The normally-open, active-low MIN optical calibration switch is sensed on PC0. Emergency inputs are acted on immediately; only the optical input is debounced.
 
 ### Hotloop
 
@@ -79,13 +82,43 @@ This communication protocol runs inside a single nonblocking hotloop released by
 2) read safety info
     - if hardstop switches pressed, kill
     - if estop pressed, kill
-    - if a fatal fault is present, command 0 A
+    - if a fatal fault is present, send the all-zero MIT command
 3) read state info
     - read motor feedback position and velocity
     - update linear position and velocity
 4) control loop
-    - set velocity command to the requested velocity, adjusted for acceleration, jerk, and position limits
+    - set velocity command to the requested velocity, adjusted for acceleration, jerk, and position limits, and convert from mm/s to output-shaft rad/s
 5) reply protocol
+
+### Electrical
+
+The NUCLEO-F446RE connections for `BOARD=drive` are:
+
+| Function | Nucleo connector | MCU pin | Connect to |
+|---|---|---|---|
+| CAN receive | D15, CN5 pin 10 | PB8 / CAN1_RX | CAN transceiver RXD |
+| CAN transmit | D14, CN5 pin 9 | PB9 / CAN1_TX | CAN transceiver TXD |
+| Hard-limit chain | CN7 pin 28 | PA0 | Normally-open switch contact to GND |
+| Estop chain | CN7 pin 30 | PA1 | Normally-closed relay contact to GND |
+| MIN optical switch | CN7 pin 38 | PC0 | Normally-open switch output to GND |
+| Serial transmit | D1, CN9 pin 2 | PA2 / USART2_TX | Onboard ST-LINK USB virtual COM |
+| Serial receive | D0, CN9 pin 1 | PA3 / USART2_RX | Onboard ST-LINK USB virtual COM |
+| Logic ground | CN7 pin 20 or 22 | GND | All external logic grounds |
+
+PB8 and PB9 are logic-level CAN signals, not CANH and CANL.
+Use a 3.3 V-compatible CAN transceiver between the Nucleo and the motor CAN bus.
+The three safety inputs use internal pull-ups. The hard-limit and optical inputs are high
+when inactive and low when their normally-open contacts close. The estop input is low
+when its normally-closed contact is healthy and high when the contact opens.
+The relay contacts must be voltage-free; never apply motor voltage to a Nucleo pin.
+
+USART2 is connected to the onboard ST-LINK virtual COM port by default and runs at
+230400 baud, 8 data bits, no parity, and 1 stop bit.
+No jumper wires are required for the normal USB serial connection.
+Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
+to avoid contention with the ST-LINK virtual COM port.
+
+---
 
 ## The NEMA17 system
 
@@ -133,3 +166,38 @@ All fatal faults invalidate calibration. Priority is hard limit, system, joystic
 TIM2 releases a nonblocking foreground control cycle at 1 kHz and detects overruns. The cycle reads one request, samples safety and joystick state, advances calibration or the motion profile, updates the step rate, and writes at most one reply.
 
 TIM5 is a separate 1 MHz, 32-bit output-compare edge scheduler. It emits 10 us STEP pulses, preserves phase when frequency changes, and counts rising edges. Direction changes only after the profile reaches zero; STEP is held low, DIR changes, and motion waits one full control cycle before restarting. PC0 EXTI stops STEP and disables ENA immediately; the foreground cycle treats this as a calibration event or an active hard-limit fault.
+
+### Electrical
+
+The NUCLEO-F446RE connections for `BOARD=teleop` are:
+
+| Function | Nucleo connector | MCU pin | Connect to |
+|---|---|---|---|
+| STEP | A0, CN8 pin 1 | PA0 / TIM5_CH1 | TB6600 PUL logic input |
+| Direction | A3, CN8 pin 4 | PB0 | TB6600 DIR logic input |
+| Enable | CN10 pin 24 | PB1 | TB6600 ENA logic input |
+| MIN limit switch | A5, CN8 pin 6 | PC0 | Normally-closed switch to GND |
+| Joystick axis | A4, CN8 pin 5 | PC1 / ADC1_IN11 | Joystick analog output |
+| Serial transmit | D1, CN9 pin 2 | PA2 / USART2_TX | Onboard ST-LINK USB virtual COM |
+| Serial receive | D0, CN9 pin 1 | PA3 / USART2_RX | Onboard ST-LINK USB virtual COM |
+| 3.3 V supply | +3V3, CN6 pin 4 | 3.3 V | 3.3 V joystick supply |
+| Logic ground | GND, CN6 pin 6 or 7 | GND | Joystick and driver signal ground |
+
+STEP, DIR-positive, and ENA are active-high 3.3 V logic signals.
+Verify that the specific TB6600 module accepts 3.3 V inputs; otherwise use an appropriate
+logic interface between the Nucleo and the driver's PUL, DIR, and ENA terminals.
+Do not connect these GPIOs to the driver's motor-power terminals.
+
+The MIN input uses an internal pull-up.
+Wire the normally-closed switch between A5 and GND so an asserted switch or broken wire
+opens the circuit and drives the input high.
+Power the joystick from +3V3 and GND, and ensure its selected-axis output remains between
+0 V and 3.3 V before connecting it to A4.
+
+USART2 is connected to the onboard ST-LINK virtual COM port by default and runs at
+230400 baud, 8 data bits, no parity, and 1 stop bit.
+No jumper wires are required for the normal USB serial connection.
+Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
+to avoid contention with the ST-LINK virtual COM port.
+
+---

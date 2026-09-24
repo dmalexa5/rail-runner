@@ -9,6 +9,8 @@ typedef enum
     PROTOCOL_REQUEST_CALIBRATE,
     PROTOCOL_REQUEST_DISARM,
     PROTOCOL_REQUEST_SETPOINT,
+    PROTOCOL_REQUEST_SET_KD,
+    PROTOCOL_REQUEST_INVALID_KD,
     PROTOCOL_REQUEST_INVALID
 } protocol_request_type_t;
 
@@ -16,6 +18,7 @@ typedef struct
 {
     protocol_request_type_t type;
     float value_mm_s;
+    float gain_kd;
 } protocol_request_t;
 
 typedef enum
@@ -24,6 +27,7 @@ typedef enum
     PROTOCOL_RESPONSE_CALIBRATING,
     PROTOCOL_RESPONSE_DISARMED,
     PROTOCOL_RESPONSE_ACK,
+    PROTOCOL_RESPONSE_KD,
     PROTOCOL_RESPONSE_ERR_CAL,
     PROTOCOL_RESPONSE_ERR_DIS,
     PROTOCOL_RESPONSE_ERR_LIM,
@@ -43,6 +47,7 @@ typedef struct
     float position_mm;
     float velocity_mm_s;
     float acceleration_mm_s2;
+    float gain_kd;
 } protocol_response_t;
 
 /** Parses at most one complete host request without blocking. */

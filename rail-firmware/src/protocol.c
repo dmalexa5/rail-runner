@@ -48,6 +48,49 @@ static bool parse_setpoint(const char *text, float *value)
     return true;
 }
 
+static bool parse_gain_kd(const char *text, float *value)
+{
+    const char *cursor = text;
+    unsigned int whole = 0U;
+    unsigned int fraction = 0U;
+    unsigned int scale = 1U;
+    unsigned int fraction_digits = 0U;
+
+    if (*cursor < '0' || *cursor > '9')
+    {
+        return false;
+    }
+    while (*cursor >= '0' && *cursor <= '9')
+    {
+        whole = whole * 10U + (unsigned int)(*cursor++ - '0');
+        if (whole > 1U)
+        {
+            return false;
+        }
+    }
+    if (*cursor == '.')
+    {
+        cursor++;
+        while (*cursor >= '0' && *cursor <= '9' && fraction_digits < 3U)
+        {
+            fraction = fraction * 10U + (unsigned int)(*cursor++ - '0');
+            scale *= 10U;
+            fraction_digits++;
+        }
+        if (fraction_digits == 0U)
+        {
+            return false;
+        }
+    }
+    if (*cursor != '\0' || (whole == 1U && fraction != 0U))
+    {
+        return false;
+    }
+
+    *value = (float)whole + (float)fraction / (float)scale;
+    return true;
+}
+
 bool protocol_read_request(protocol_request_t *request)
 {
     char line[24];
@@ -57,6 +100,7 @@ bool protocol_read_request(protocol_request_t *request)
     }
 
     request->value_mm_s = 0.0f;
+    request->gain_kd = 0.0f;
     if (strcmp(line, "cal 0") == 0)
     {
         request->type = PROTOCOL_REQUEST_CALIBRATE;
@@ -69,6 +113,15 @@ bool protocol_read_request(protocol_request_t *request)
              parse_setpoint(line + 3, &request->value_mm_s))
     {
         request->type = PROTOCOL_REQUEST_SETPOINT;
+    }
+    else if (strncmp(line, "kd ", 3) == 0 &&
+             parse_gain_kd(line + 3, &request->gain_kd))
+    {
+        request->type = PROTOCOL_REQUEST_SET_KD;
+    }
+    else if (strcmp(line, "kd") == 0 || strncmp(line, "kd ", 3) == 0)
+    {
+        request->type = PROTOCOL_REQUEST_INVALID_KD;
     }
     else
     {
@@ -127,6 +180,14 @@ bool protocol_write_response(const protocol_response_t *response)
                      response->acceleration_mm_s2);
         snprintf(line, sizeof(line), "ack %s %s %s\n",
                  position, velocity, acceleration);
+        return uart_write(line);
+    }
+    if (response->type == PROTOCOL_RESPONSE_KD)
+    {
+        unsigned long thousandths =
+            (unsigned long)(response->gain_kd * 1000.0f + 0.5f);
+        snprintf(line, sizeof(line), "kd %lu.%03lu\n",
+                 thousandths / 1000UL, thousandths % 1000UL);
         return uart_write(line);
     }
     if ((unsigned int)response->type >=

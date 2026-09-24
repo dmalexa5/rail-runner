@@ -43,13 +43,13 @@
 void board_init(void);
 
 #ifdef BOARD_DRIVE
-/** Returns true while the normally-closed hard-limit chain is healthy. */
+/** Returns true while the normally-open hard-limit input is inactive. */
 bool board_hard_limits_ok(void);
 
 /** Returns true while the normally-closed estop chain is healthy. */
 bool board_estop_ok(void);
 
-/** Returns true while the normally-closed MIN optical switch is asserted. */
+/** Returns true while the normally-open MIN optical switch is asserted. */
 bool board_optical_min_active(void);
 #else
 /** Returns true when the normally-closed MIN switch is open. */
