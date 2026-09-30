@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="1920" height="1080" fill="#FFFFFF"/>
+
+  <text x="960" y="110" text-anchor="middle" font-size="56" font-weight="bold" fill="#111827">rail-runner</text>
+  <text x="960" y="160" text-anchor="middle" font-size="28" fill="#6B7280">Joystick velocity in → ROS 2 → drive motor out</text>
+
+  <!-- zones -->
+  <rect x="40" y="230" width="290" height="680" rx="24" fill="#EEF4FF"/>
+  <rect x="420" y="230" width="690" height="680" rx="24" fill="#EEF8EC"/>
+  <rect x="1200" y="230" width="680" height="680" rx="24" fill="#FFF3E6"/>
+  <g font-size="24" font-weight="bold" letter-spacing="2" text-anchor="middle">
+    <text x="185" y="280" fill="#2F5FB3">TELEOP HW</text>
+    <text x="765" y="280" fill="#2E7D32">ROS 2 HOST  ·  rail-interface</text>
+    <text x="1540" y="280" fill="#C2410C">DRIVE HW</text>
+  </g>
+
+  <!-- main boxes -->
+  <g stroke-width="3" fill="#FFFFFF">
+    <rect x="70"   y="390" width="230" height="170" rx="16" stroke="#2F5FB3"/>
+    <rect x="460"  y="390" width="230" height="170" rx="16" stroke="#2E7D32"/>
+    <rect x="850"  y="390" width="230" height="170" rx="16" stroke="#2E7D32"/>
+    <rect x="1240" y="390" width="230" height="170" rx="16" stroke="#C2410C"/>
+    <rect x="1620" y="390" width="230" height="170" rx="16" stroke="#C2410C"/>
+  </g>
+  <g text-anchor="middle" fill="#111827">
+    <text x="185"  y="462" font-size="30" font-weight="bold">Joystick +</text>
+    <text x="185"  y="498" font-size="30" font-weight="bold">Arduino Nano</text>
+    <text x="185"  y="534" font-size="20" fill="#6B7280">rail-teleop firmware</text>
+
+    <text x="575"  y="470" font-size="30" font-weight="bold">teleop node</text>
+    <text x="575"  y="506" font-size="20" fill="#6B7280">rail-teleop.cpp</text>
+
+    <text x="965"  y="470" font-size="30" font-weight="bold">drive node</text>
+    <text x="965"  y="506" font-size="20" fill="#6B7280">rail-drive.cpp</text>
+
+    <text x="1355" y="470" font-size="27" font-weight="bold">Nucleo F446RE</text>
+    <text x="1355" y="506" font-size="20" fill="#6B7280">rail-drive firmware</text>
+
+    <text x="1735" y="470" font-size="30" font-weight="bold">AK60 motor</text>
+    <text x="1735" y="506" font-size="20" fill="#6B7280">CubeMars servo</text>
+  </g>
+
+  <!-- main arrows -->
+  <g stroke="#374151" stroke-width="3" fill="none">
+    <line x1="300"  y1="475" x2="456"  y2="475" marker-end="url(#a)"/>
+    <line x1="690"  y1="475" x2="846"  y2="475" marker-end="url(#a)"/>
+    <line x1="1080" y1="455" x2="1236" y2="455" marker-end="url(#a)"/>
+    <line x1="1240" y1="500" x2="1084" y2="500" marker-end="url(#a)"/>
+    <line x1="1470" y1="455" x2="1616" y2="455" marker-end="url(#a)"/>
+    <line x1="1620" y1="500" x2="1474" y2="500" marker-end="url(#a)"/>
+  </g>
+  <g text-anchor="middle" font-size="20" fill="#374151">
+    <text x="380" y="430" font-weight="bold">USB serial</text>
+    <text x="380" y="456" font-family="Menlo, Courier New, monospace">sp &lt;vel&gt;</text>
+
+    <text x="770" y="430" font-weight="bold">ROS topic</text>
+    <text x="770" y="456" font-size="17" font-family="Menlo, Courier New, monospace">/rail_velocity</text>
+
+    <text x="1160" y="410" font-weight="bold">USB serial</text>
+    <text x="1160" y="436" font-size="18" font-family="Menlo, Courier New, monospace">sp/cal/dis</text>
+    <text x="1160" y="530" font-size="18" font-family="Menlo, Courier New, monospace">ack pos vel</text>
+
+    <text x="1545" y="410" font-weight="bold">CAN bus</text>
+    <text x="1545" y="436">velocity cmd</text>
+    <text x="1545" y="530">feedback</text>
+  </g>
+
+  <!-- secondary row -->
+  <g stroke-width="2" fill="#FFFFFF" stroke="#9CA3AF" stroke-dasharray="8 6">
+    <rect x="70"   y="700" width="230" height="110" rx="14"/>
+    <rect x="850"  y="700" width="230" height="110" rx="14"/>
+    <rect x="1240" y="700" width="230" height="110" rx="14"/>
+    <rect x="1620" y="700" width="230" height="110" rx="14"/>
+  </g>
+  <g text-anchor="middle" fill="#374151">
+    <text x="185"  y="748" font-size="24" font-weight="bold">Stepper motor</text>
+    <text x="185"  y="780" font-size="18" fill="#6B7280">NEMA17 via TB6600</text>
+
+    <text x="965"  y="748" font-size="24" font-weight="bold" font-family="Menlo, Courier New, monospace">/rail_state</text>
+    <text x="965"  y="780" font-size="18" fill="#6B7280">position + velocity out</text>
+
+    <text x="1355" y="748" font-size="24" font-weight="bold">Safety switches</text>
+    <text x="1355" y="780" font-size="18" fill="#6B7280">e-stop · limits · home</text>
+
+    <text x="1735" y="748" font-size="24" font-weight="bold">Rail carriage</text>
+    <text x="1735" y="780" font-size="18" fill="#6B7280">lead screw, 0–500 mm</text>
+  </g>
+  <g stroke="#374151" stroke-width="3" fill="none">
+    <line x1="185"  y1="560" x2="185"  y2="696" marker-end="url(#a)"/>
+    <line x1="965"  y1="560" x2="965"  y2="696" marker-end="url(#a)"/>
+    <line x1="1355" y1="700" x2="1355" y2="564" marker-end="url(#a)"/>
+    <line x1="1735" y1="560" x2="1735" y2="696" marker-end="url(#a)"/>
+  </g>
+
+  <text x="765" y="875" text-anchor="middle" font-size="22" font-style="italic" fill="#2E7D32">Both nodes started by rail-bringup launch files</text>
+
+  <!-- footer -->
+  <text x="960" y="1000" text-anchor="middle" font-size="22" fill="#6B7280">Solid = main data path  ·  Dashed = side inputs / outputs</text>
+</svg>
