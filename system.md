@@ -6,13 +6,11 @@ This repository contains all the software for two linear tracks
 - _drive_ is the main ak-60-powered linear track and carries a franka-gello-duo configuration. The control of the franka arms is outside the scope of this system.
 - _teleop_ is the teleoperation system. It is a nema-17-powered linear track, velocity-controlled by a joystick module.
 
-## `rail-firmware` contains the software for two different board targets
+## `rail-drive` contains the firmware for the drive board
 
-- `BOARD=drive` targets an ak60-powered linear track
-- `BOARD=teleop` targets a NEMA 17 powered teleoperation track
-Both will flash to STM-32 Nucleo F446RE development boards.
+`BOARD=drive` targets an ak60-powered linear track and flashes to an STM-32 Nucleo F446RE development board.
 
-[rail-firmware/SPEC.md](rail-firmware/SPEC.md)
+[rail-drive/SPEC.md](rail-drive/SPEC.md)
 
 ### The AK60-6-V3.0 system
 

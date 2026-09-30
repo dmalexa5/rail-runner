@@ -6,13 +6,8 @@ extern "C" {
 #endif
 
 #define HAL_MODULE_ENABLED
-#ifdef BOARD_TELEOP
-#define HAL_ADC_MODULE_ENABLED
-#endif
 #define HAL_CORTEX_MODULE_ENABLED
-#ifdef BOARD_DRIVE
 #define HAL_CAN_MODULE_ENABLED
-#endif
 #define HAL_DMA_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
@@ -52,7 +47,6 @@ extern "C" {
 #define INSTRUCTION_CACHE_ENABLE 1U
 #define DATA_CACHE_ENABLE 1U
 
-#define USE_HAL_ADC_REGISTER_CALLBACKS 0U
 #define USE_HAL_CAN_REGISTER_CALLBACKS 0U
 #define USE_HAL_CEC_REGISTER_CALLBACKS 0U
 #define USE_HAL_CRYP_REGISTER_CALLBACKS 0U
@@ -109,10 +103,6 @@ extern "C" {
 
 #ifdef HAL_DMA_MODULE_ENABLED
 #include "stm32f4xx_hal_dma.h"
-#endif
-
-#ifdef HAL_ADC_MODULE_ENABLED
-#include "stm32f4xx_hal_adc.h"
 #endif
 
 #ifdef HAL_FLASH_MODULE_ENABLED

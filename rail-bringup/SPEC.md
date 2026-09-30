@@ -17,7 +17,7 @@
 - after `activate`, read the left and right arrow keys until `Ctrl+C`, then immediately `deactivate`
 - left/right inject 10 mm/s velocity steps while held, 0 mm/s while released
 
-This will test the rail-firmware smoothing functionality
+This will test the rail-drive smoothing functionality
 
 **`scripts/teleop-node.py`** runs a debugging script that lets a user configure, activate, and deactivate the drive node (designed to run alongside `drive-alone` for testing)
 

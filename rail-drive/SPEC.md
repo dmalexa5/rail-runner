@@ -1,8 +1,6 @@
-# `rail-firmware` contains the software for two different board targets
+# `rail-drive` contains the software for the drive board
 
-- `BOARD=drive` targets an ak60-powered linear track
-- `BOARD=teleop` targets a NEMA 17 powered teleoperation track
-Both flash to STM-32 Nucleo F446RE development boards.
+`BOARD=drive` targets an ak60-powered linear track and flashes to an STM-32 Nucleo F446RE development board.
 
 ---
 
@@ -118,87 +116,3 @@ USART2 is connected to the onboard ST-LINK virtual COM port by default and runs 
 No jumper wires are required for the normal USB serial connection.
 Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
 to avoid contention with the ST-LINK virtual COM port.
-
----
-
-## The NEMA17 system
-
-The teleoperation track uses a NEMA17 stepper, a TB6600 driver configured for 1600 pulses/rev, a 20 mm/rev belt drive, and a local analog joystick. It has one normally-closed MIN switch and no estop. Position is the commanded pulse count and may drift if the motor skips steps.
-
-### Motion
-
-The drive motion limits and jerk-limited profile are reused in virtual drive coordinates. `SCALE` is 0.5, so the 250 mm physical track reports 0--500 mm, ±16 physical mm/s reports ±32 mm/s, and each STEP pulse is 0.025 reported mm. Normal motion brakes within the 2--498 mm virtual envelope; an outward joystick command at an endpoint is clamped to zero.
-
-The 3.3 V joystick is sampled at 1 kHz. Its selected axis maps linearly outside a 5% center deadband to ±32 virtual mm/s. Motion is armed only after the joystick has entered the deadband following calibration. ADC initialization failure or 20 ms without a conversion is `err joy`.
-
-Teleop pins are PA0/TIM5_CH1 STEP, PB0 DIR, PB1 ENA, PC0 MIN, PC1 joystick ADC, and PA2/PA3 USART2. STEP, DIR-positive, and ENA are active high. PC0 uses a pull-up; an open circuit or asserted normally-closed switch is active.
-
-### Serial commands
-
-USART2 runs at 115200 baud with strict request/reply, LF or CRLF requests, and LF replies. Position and velocity use one decimal place.
-
-`<rec>` <-- `<reply>`
-
-- `cal` <-- `cal` while calibrating, then `ack <pos> <vel>` when done
-    - The host must continue sending `cal` during calibration
-    - Seek MIN at -10 virtual mm/s, or back off immediately if MIN is already asserted.
-    - Stop STEP on assertion, then reverse with the normal motion limits. Snapshot the first clear sample, require five consecutive clear samples, and set that edge to zero.
-    - Brake to zero. Calibration completes at the resulting positive position.
-    - Seeking is limited to 500 virtual mm and backoff to 10 virtual mm. Exceeding either immediately disables the driver and latches `err cal` until `dis`.
-- `dis` <-- `dis` after a jerk-limited stop has completed and ENA is disabled. The host must allow 3 seconds for the reply. Calibration is invalidated.
-- `req` <-- `ack <pos> <vel>`. `pos` is the scaled STEP count and `vel` is the scaled profile command sent for `rail-drive` to track. Valid requests refresh a 20 ms watchdog. Timeout performs a limited stop, disables ENA, and latches `err com`.
-
-### Error responses
-
-| Error | Cause | Response | Fatal? |
-|---|---|---|---|
-| `err cal` | Non-`cal` during calibration | Deactivate | No |
-| `err dis` | Non-`cal` while deactivated | Stay deactivated | No |
-| `err hrd` | Limit switch pressed during operation | Disable motor; manual reset | Yes |
-| `err com` | Host command timeout | Limited stop; deactivate | Yes |
-| `err joy` | ADC failure or 20 ms conversion loss | Disable | Yes |
-| `err cmd` | Malformed active-state command | Stay active; don't refresh watchdog | No |
-| `err sys` | Control overrun, UART overflow, or step-timer failure | Disable | Yes |
-
-All fatal faults invalidate calibration. Priority is hard limit, system, joystick, then communication. A healthy `dis` clears a fault; hard-limit recovery also requires the switch to be released, and joystick recovery requires fresh ADC data.
-
-### Hotloop
-
-TIM2 releases a nonblocking foreground control cycle at 1 kHz and detects overruns. The cycle reads one request, samples safety and joystick state, advances calibration or the motion profile, updates the step rate, and writes at most one reply.
-
-TIM5 is a separate 1 MHz, 32-bit output-compare edge scheduler. It emits 10 us STEP pulses, preserves phase when frequency changes, and counts rising edges. Direction changes only after the profile reaches zero; STEP is held low, DIR changes, and motion waits one full control cycle before restarting. PC0 EXTI stops STEP and disables ENA immediately; the foreground cycle treats this as a calibration event or an active hard-limit fault.
-
-### Electrical
-
-The NUCLEO-F446RE connections for `BOARD=teleop` are:
-
-| Function | Nucleo connector | MCU pin | Connect to |
-|---|---|---|---|
-| STEP | A0, CN8 pin 1 | PA0 / TIM5_CH1 | TB6600 PUL logic input |
-| Direction | A3, CN8 pin 4 | PB0 | TB6600 DIR logic input |
-| Enable | CN10 pin 24 | PB1 | TB6600 ENA logic input |
-| MIN limit switch | A5, CN8 pin 6 | PC0 | Normally-closed switch to GND |
-| Joystick axis | A4, CN8 pin 5 | PC1 / ADC1_IN11 | Joystick analog output |
-| Serial transmit | D1, CN9 pin 2 | PA2 / USART2_TX | Onboard ST-LINK USB virtual COM |
-| Serial receive | D0, CN9 pin 1 | PA3 / USART2_RX | Onboard ST-LINK USB virtual COM |
-| 3.3 V supply | +3V3, CN6 pin 4 | 3.3 V | 3.3 V joystick supply |
-| Logic ground | GND, CN6 pin 6 or 7 | GND | Joystick and driver signal ground |
-
-STEP, DIR-positive, and ENA are active-high 3.3 V logic signals.
-Verify that the specific TB6600 module accepts 3.3 V inputs; otherwise use an appropriate
-logic interface between the Nucleo and the driver's PUL, DIR, and ENA terminals.
-Do not connect these GPIOs to the driver's motor-power terminals.
-
-The MIN input uses an internal pull-up.
-Wire the normally-closed switch between A5 and GND so an asserted switch or broken wire
-opens the circuit and drives the input high.
-Power the joystick from +3V3 and GND, and ensure its selected-axis output remains between
-0 V and 3.3 V before connecting it to A4.
-
-USART2 is connected to the onboard ST-LINK virtual COM port by default and runs at
-115200 baud, 8 data bits, no parity, and 1 stop bit.
-No jumper wires are required for the normal USB serial connection.
-Before using D0 and D1 with an external 3.3 V UART, configure the board's solder bridges
-to avoid contention with the ST-LINK virtual COM port.
-
----

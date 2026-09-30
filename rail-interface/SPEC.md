@@ -23,7 +23,7 @@ The do-nothing unconfigured state
 The passive, connection-established state. A `dis 0` acknowledgement means the firmware accepted the disable request; its limited stop to 0 A may still be completing.
 
 **Activating** — Inactive → Active
-- Run calibration (see [rail-firmware/SPEC.md](../rail-firmware/SPEC.md) for calibration protocol)
+- Run calibration (see [rail-drive/SPEC.md](../rail-drive/SPEC.md) for calibration protocol)
 - If calibration succeeds within the configured timeout, enter Active. Otherwise, recover to Unconfigured only if `dis 0` succeeds.
 
 **CleaningUp** — Inactive → Unconfigured
@@ -35,7 +35,7 @@ The passive, connection-established state. A `dis 0` acknowledgement means the f
 
 The active node state, where constant communication with the rail firmware is occuring.
 
-See [rail-firmware/SPEC.md](../rail-firmware/SPEC.md) for each respective communication protocol
+See [rail-drive/SPEC.md](../rail-drive/SPEC.md) for each respective communication protocol
 
 - `rail-drive` will receive a stream of velocity setpoints
 - `rail-teleop` will publish a stream of velcooity setpoints

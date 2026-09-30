@@ -12,12 +12,10 @@
 #define MAX_POS 500.0f
 #define POSITION_MARGIN 2.0f
 #define CAL_VEL (-10.0f)
-#ifdef BOARD_DRIVE
 #define PITCH 4.0f
 #define MOTOR_DIRECTION 1.0f
-#endif
 
-/** Initializes the selected board's deactivated control state. */
+/** Initializes the drive board's deactivated control state. */
 void control_init(void);
 
 /** Runs one released 1 kHz control cycle, or returns false if none is pending. */

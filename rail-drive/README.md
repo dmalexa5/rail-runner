@@ -1,4 +1,4 @@
-# rail-firmware
+# rail-drive
 
 This is the firmware for the physical system, controlled by a `NUCLEPO_F446RE` development board.
 
@@ -6,7 +6,6 @@ This is the firmware for the physical system, controlled by a `NUCLEPO_F446RE` d
 ```sh
 make clean                  # remove `build/`
 make BOARD=drive build      # build `build/rail-drive.elf`
-make BOARD=teleop build     # build `build/rail-teleop.elf`
-make BOARD=drive flash      # flash the selected board with OpenOCD
-make BOARD=drive debug      # debug the selected board with gdb-multiarch
+make BOARD=drive flash      # flash the drive board with OpenOCD
+make BOARD=drive debug      # debug the drive board with gdb-multiarch
 ```

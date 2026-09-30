@@ -1,7 +1,7 @@
 BOARD ?= drive
 
-ifeq ($(filter $(BOARD),drive teleop),)
-$(error Unsupported BOARD '$(BOARD)'; expected drive or teleop)
+ifneq ($(BOARD),drive)
+$(error Unsupported BOARD '$(BOARD)'; expected drive)
 endif
 
 TARGET = rail-$(BOARD)
@@ -22,12 +22,6 @@ MCU = $(CPU) -mthumb $(FPU) $(FLOAT_ABI)
 DEFINES = \
     -DSTM32F446xx \
     -DUSE_HAL_DRIVER
-
-ifeq ($(BOARD),drive)
-DEFINES += -DBOARD_DRIVE
-else
-DEFINES += -DBOARD_TELEOP
-endif
 
 CFLAGS = \
     $(MCU) \
@@ -67,7 +61,6 @@ COMMON_SOURCES = \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/syscalls.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/sysmem.c
 
-ifeq ($(BOARD),drive)
 BOARD_SOURCES = \
     src/ak60.c \
     src/board.c \
@@ -75,16 +68,6 @@ BOARD_SOURCES = \
     src/control.c \
     src/protocol.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_can.c
-else
-BOARD_SOURCES = \
-    src/teleop/board.c \
-    src/teleop/control.c \
-    src/teleop/joystick.c \
-    src/teleop/protocol.c \
-    src/teleop/stepper.c \
-    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c \
-    vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c
-endif
 
 SOURCES = $(COMMON_SOURCES) $(BOARD_SOURCES)
 
