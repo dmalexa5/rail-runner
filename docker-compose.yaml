@@ -1,0 +1,20 @@
+services:
+  rail-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    container_name: rail-runner
+    network_mode: host
+    # privileged + /dev lets the serial adapters (/dev/ttyUSB0 for rail-teleop,
+    # /dev/ttyACM0 for rail-drive) appear in the container on hot-plug.
+    privileged: true
+    working_dir: /ros2_ws
+    tty: true
+    stdin_open: true
+    command: bash
+    volumes:
+      - ./:/ros2_ws
+      - /dev:/dev

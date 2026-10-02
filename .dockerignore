@@ -1,0 +1,6 @@
+.git
+build/
+install/
+log/
+.venv/
+rail-drive/vendor/
