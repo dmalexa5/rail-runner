@@ -16,37 +16,20 @@
 #define TIMER_HZ 40000UL
 #define TX_SIZE 64
 
-static volatile bool enabled, pending, busy, stopped;
+static volatile bool enabled, pending;
 static volatile int32_t position_pulses;
 static volatile int16_t pulse_increment;
 static uint16_t phase;
 static bool pulse_low;
 static uint8_t divider;
-static bool previous_pressed;
+static bool started;
+static uint16_t joystick_center;
 static volatile uint8_t tx_head, tx_tail;
 static volatile bool tx_in_line;
 static char tx_buffer[TX_SIZE];
 
-/* Called with interrupts masked, including from the timer ISR. */
-static void disable(void)
-{
-    PORTD &= (uint8_t)~ENABLE;
-    PORTB |= STEP;
-    enabled = false;
-    pulse_increment = 0;
-    phase = 0;
-    pulse_low = false;
-    stopped = true;
-}
-
 ISR(TIMER1_COMPA_vect)
 {
-    /* Stop at the first sampled press; debounce is only needed to re-enable. */
-    bool pressed = !(PINB & BUTTON);
-    if (enabled && pressed && !previous_pressed)
-        disable();
-    previous_pressed = pressed;
-
     int16_t increment = pulse_increment;
     bool was_low = pulse_low;
     PORTB |= STEP;
@@ -68,7 +51,6 @@ ISR(TIMER1_COMPA_vect)
                     position_pulses += positive ? 1 : -1;
                     next -= 65536UL;
                 } else {
-                    disable();
                     next = 0;
                 }
             }
@@ -79,8 +61,6 @@ ISR(TIMER1_COMPA_vect)
     }
     if (++divider == 40) {
         divider = 0;
-        if (enabled && (pending || busy))
-            disable();
         pending = true;
     }
 }
@@ -158,23 +138,15 @@ static void report(float velocity)
     serial_send(line, false);
 }
 
-static void control_cycle(int32_t pulses, bool did_stop)
+static void control_cycle(int32_t pulses)
 {
     static float velocity, acceleration;
-    static bool centered, press_ready;
-    static uint8_t pressed_ms, released_ms, report_ms;
-    if (did_stop) {
-        velocity = acceleration = 0.0f;
-        centered = false;
-        press_ready = false;
-        serial_send("sp 0\n", true);
-    }
+    static uint8_t pressed_ms, report_ms;
     bool pressed = !(PINB & BUTTON);
     if (pressed) {
-        released_ms = 0;
         if (pressed_ms < 20)
             ++pressed_ms;
-        if (pressed_ms == 20 && press_ready && !enabled) {
+        if (pressed_ms == 20 && !started) {
             ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
                 position_pulses = 0;
                 phase = 0;
@@ -182,26 +154,18 @@ static void control_cycle(int32_t pulses, bool did_stop)
                 PORTD |= ENABLE;
                 enabled = true;
             }
+            joystick_center = ADC;
+            started = true;
             pulses = 0;
             velocity = acceleration = 0.0f;
-            centered = false;
-            press_ready = false;
         }
     } else {
         pressed_ms = 0;
-        if (released_ms < 20)
-            ++released_ms;
-        if (released_ms == 20)
-            press_ready = true;
     }
-    float target = joystick_velocity(ADC);
+    float joystick_target = joystick_velocity(ADC, joystick_center);
     if (enabled) {
-        if (target == 0.0f)
-            centered = true;
-        if (!centered)
-            target = 0.0f;
-        target = motion_safe_target(target, pulses / PULSES_PER_MM,
-                                    velocity, acceleration);
+        float target = motion_safe_target(joystick_target, pulses / PULSES_PER_MM,
+                                         velocity, acceleration);
         motion_profile_step(target, &velocity, &acceleration);
     } else {
         velocity = acceleration = 0.0f;
@@ -212,10 +176,9 @@ static void control_cycle(int32_t pulses, bool did_stop)
         if (enabled)
             pulse_increment = increment;
     }
-    if (++report_ms == 10) {
+    if (started && ++report_ms == 10) {
         report_ms = 0;
-        report(enabled ? increment * (TIMER_HZ / 65536.0f) /
-                         PULSES_PER_MM : 0.0f);
+        report(joystick_target);
     }
 }
 
@@ -241,27 +204,20 @@ int main(void)
     TCCR1B = _BV(WGM12) | _BV(CS10);
     TIMSK1 = _BV(OCIE1A);
     sei();
-    serial_send("sp 0\n", true);
 
     for (;;) {
-        bool run = false, did_stop = false;
+        bool run = false;
         int32_t pulses = 0;
         ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
             if (pending) {
                 pending = false;
-                busy = true;
                 run = true;
                 pulses = position_pulses;
-                did_stop = stopped;
-                stopped = false;
             }
         }
         if (!run)
             continue;
-        control_cycle(pulses, did_stop);
-        ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-            busy = false;
-        }
+        control_cycle(pulses);
     }
 }
 

@@ -1,21 +1,21 @@
 #ifndef TELEOP_MOTION_H
 #define TELEOP_MOTION_H
+#include <stdint.h>
 #ifndef SCALE
-#define SCALE 0.1f
+#define SCALE 0.2f
 #endif
-#define MAX_JRK (50.0f * SCALE)
-#define MAX_ACC (50.0f * SCALE)
+#define MAX_JRK (50.0f / SCALE)
+#define MAX_ACC (50.0f / SCALE)
 #define MAX_VEL (32.0f * SCALE)
 #define MAX_POS (500.0f * SCALE)
 #define POSITION_MARGIN (2.0f * SCALE)
-#define PITCH (4.0f * SCALE)
+#define TRAVEL_PER_REV_MM (20.0f * 3.14159265358979323846f)
 #define CONTROL_DT_S 0.001f
-#define PULSES_PER_MM (1600.0f / PITCH)
-#define MAX_PULSES 2000000L
-#define JOYSTICK_CENTER 471 /* 2.3 V with a 5.0 V ADC reference. */
+#define PULSES_PER_MM (3200.0f / TRAVEL_PER_REV_MM)
+#define MAX_PULSES ((int32_t)(MAX_POS * PULSES_PER_MM))
 #define JOYSTICK_DEADBAND 25
 void motion_profile_step(float target, float *velocity, float *acceleration);
 float motion_stopping_distance(float velocity, float acceleration);
 float motion_safe_target(float target, float position, float velocity, float acceleration);
-float joystick_velocity(unsigned sample);
+float joystick_velocity(unsigned sample, unsigned center);
 #endif

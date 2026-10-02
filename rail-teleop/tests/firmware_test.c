@@ -12,11 +12,7 @@ static void millisecond(void)
         TIMER1_COMPA_vect();
     assert(pending);
     pending = false;
-    busy = true;
-    bool did_stop = stopped;
-    stopped = false;
-    control_cycle(position_pulses, did_stop);
-    busy = false;
+    control_cycle(position_pulses);
     while (tx_tail != tx_head)
         USART_UDRE_vect();
 }
@@ -25,6 +21,25 @@ static void wait_ms(unsigned count)
 {
     while (count--)
         millisecond();
+}
+
+static void check_broadcast(unsigned sample, int32_t position, bool motor_enabled,
+                            const char *expected)
+{
+    ADC = sample;
+    enabled = motor_enabled;
+    tx_head = tx_tail = 0;
+    tx_in_line = false;
+    for (int i = 0; i < 10; ++i)
+        control_cycle(position);
+    char output[64];
+    unsigned count = 0;
+    while (tx_tail != tx_head) {
+        USART_UDRE_vect();
+        output[count++] = UDR0;
+    }
+    output[count] = 0;
+    assert(strcmp(output, expected) == 0);
 }
 
 static void check_pulses(int16_t increment, int sign)
@@ -54,7 +69,7 @@ int main(void)
 {
     PORTB = STEP | DIR;
     PINB = BUTTON;
-    ADC = 1023;
+    ADC = 480;
     assert(!enabled);
     wait_ms(20);
     PINB = 0;
@@ -67,57 +82,71 @@ int main(void)
     wait_ms(1);
     assert(enabled && (PORTD & ENABLE));
     assert(position_pulses == 0 && pulse_increment == 0);
+    assert(joystick_center == 480);
     wait_ms(30); /* A held press must not disable the newly enabled driver. */
     assert(enabled && position_pulses == 0);
     PINB = BUTTON;
-    ADC = 471;
+    ADC = 480;
     wait_ms(20);
     ADC = 1023;
     wait_ms(1000);
     assert(enabled && position_pulses > 0 && pulse_increment > 0);
+    int32_t before_press = position_pulses;
     PINB = 0;
-    TIMER1_COMPA_vect();
-    assert(!enabled && !(PORTD & ENABLE) && (PORTB & STEP));
-    assert(pulse_increment == 0);
     wait_ms(100);
-    assert(!enabled);
+    assert(enabled && (PORTD & ENABLE) && pulse_increment > 0);
+    assert(joystick_center == 480);
+    assert(position_pulses > before_press);
     PINB = BUTTON;
     wait_ms(20);
+    before_press = position_pulses;
     PINB = 0;
     wait_ms(20);
-    assert(enabled && position_pulses == 0);
+    assert(enabled && position_pulses > before_press);
     PINB = BUTTON;
-    ADC = 471;
-    wait_ms(20);
+    ADC = 480;
+    wait_ms(1000);
 
-    position_pulses = 100000;
-    check_pulses(20971, 1);
-    check_pulses(-20971, -1);
+    position_pulses = MAX_PULSES / 2;
+    check_pulses(100, 1);
+    check_pulses(-100, -1);
     check_pulses(1, 1);
-    pulse_increment = -20971;
-    position_pulses = 0;
-    for (int i = 0; i < 10; ++i)
+    for (int end = 0; end < 2; ++end) {
+        int32_t limit = end ? MAX_PULSES : 0;
+        position_pulses = limit;
+        pulse_increment = end ? 20971 : -20971;
+        pending = false;
+        for (int i = 0; i < 100; ++i) {
+            TIMER1_COMPA_vect();
+            pending = false;
+            assert(PORTB & STEP); /* No outward pulses at the bound. */
+        }
+        assert(enabled && (PORTD & ENABLE));
+        assert(position_pulses == limit);
+        pulse_increment = -pulse_increment;
+        for (int i = 0; i < 100; ++i) {
+            TIMER1_COMPA_vect();
+            pending = false;
+        }
+        assert(enabled && (PORTD & ENABLE));
+        assert(end ? position_pulses < limit : position_pulses > limit);
+    }
+    /* Missed control cycles retain enable and the last pulse increment. */
+    position_pulses = MAX_PULSES / 2;
+    pulse_increment = 1000;
+    int32_t before_delay = position_pulses;
+    for (int i = 0; i < 400; ++i)
         TIMER1_COMPA_vect();
-    assert(!enabled && position_pulses == 0);
-    enabled = true;
-    PORTD |= ENABLE;
-    pulse_increment = 20971;
-    position_pulses = MAX_PULSES;
-    pending = busy = false;
-    for (int i = 0; i < 10; ++i)
-        TIMER1_COMPA_vect();
-    assert(!enabled && position_pulses == MAX_PULSES);
-    enabled = true;
-    busy = true;
-    for (int i = 0; i < 40; ++i)
-        TIMER1_COMPA_vect();
-    assert(!enabled && stopped);
-    busy = false;
-    enabled = true;
-    pending = true;
-    for (int i = 0; i < 40; ++i)
-        TIMER1_COMPA_vect();
-    assert(!enabled && stopped);
+    assert(pending && enabled && (PORTD & ENABLE));
+    assert(pulse_increment == 1000 && position_pulses > before_delay);
+    millisecond();
+    assert(enabled && (PORTD & ENABLE));
+
+    check_broadcast(0, 0, true, "sp -6.400\n");
+    check_broadcast(1023, MAX_PULSES, true, "sp 6.400\n");
+    check_broadcast(0, 0, false, "sp -6.400\n");
+    check_broadcast(1023, MAX_PULSES, false, "sp 6.400\n");
+    check_broadcast(480, 0, false, "sp 0.000\n");
 
     tx_head = tx_tail = 0;
     report(-3.2f);
@@ -150,5 +179,5 @@ int main(void)
     }
     output[count] = 0;
     assert(strcmp(output, "p 1.234\nsp 0\n") == 0);
-    puts("firmware state, pulse, deadline, and serial checks passed");
+    puts("firmware state, pulse, delayed control, and serial checks passed");
 }
