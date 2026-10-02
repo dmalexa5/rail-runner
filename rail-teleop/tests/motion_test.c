@@ -17,10 +17,11 @@ int main(void)
 {
     assert(joystick_velocity(0) == -MAX_VEL);
     assert(joystick_velocity(1023) == MAX_VEL);
-    assert(joystick_velocity(487) == 0);
-    assert(joystick_velocity(537) == 0);
-    assert(joystick_velocity(486) < 0);
-    assert(joystick_velocity(538) > 0);
+    assert(joystick_velocity(471) == 0);
+    assert(joystick_velocity(446) == 0);
+    assert(joystick_velocity(496) == 0);
+    assert(joystick_velocity(445) < 0);
+    assert(joystick_velocity(497) > 0);
     float v = 0, a = 0;
     for (int i = 0; i < 12000; ++i)
         check_step(i < 4000 ? MAX_VEL : i < 8000 ? -MAX_VEL : 0, &v, &a);

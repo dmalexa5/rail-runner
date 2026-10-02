@@ -53,15 +53,15 @@ static void check_pulses(int16_t increment, int sign)
 int main(void)
 {
     PORTB = STEP | DIR;
-    PIND = BUTTON;
+    PINB = BUTTON;
     ADC = 1023;
     assert(!enabled);
     wait_ms(20);
-    PIND = 0;
+    PINB = 0;
     wait_ms(5);
-    PIND = BUTTON;
+    PINB = BUTTON;
     wait_ms(1);
-    PIND = 0;
+    PINB = 0;
     wait_ms(19);
     assert(!enabled);
     wait_ms(1);
@@ -69,25 +69,25 @@ int main(void)
     assert(position_pulses == 0 && pulse_increment == 0);
     wait_ms(30); /* A held press must not disable the newly enabled driver. */
     assert(enabled && position_pulses == 0);
-    PIND = BUTTON;
-    ADC = 512;
+    PINB = BUTTON;
+    ADC = 471;
     wait_ms(20);
     ADC = 1023;
     wait_ms(1000);
     assert(enabled && position_pulses > 0 && pulse_increment > 0);
-    PIND = 0;
+    PINB = 0;
     TIMER1_COMPA_vect();
     assert(!enabled && !(PORTD & ENABLE) && (PORTB & STEP));
     assert(pulse_increment == 0);
     wait_ms(100);
     assert(!enabled);
-    PIND = BUTTON;
+    PINB = BUTTON;
     wait_ms(20);
-    PIND = 0;
+    PINB = 0;
     wait_ms(20);
     assert(enabled && position_pulses == 0);
-    PIND = BUTTON;
-    ADC = 512;
+    PINB = BUTTON;
+    ADC = 471;
     wait_ms(20);
 
     position_pulses = 100000;

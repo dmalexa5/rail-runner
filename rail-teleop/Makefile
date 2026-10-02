@@ -1,5 +1,5 @@
 PORT ?= /dev/ttyUSB0
-BAUD ?= 57600
+BAUD ?= 115200
 SCALE ?= 0.1
 CC = avr-gcc
 HOST_CC ?= cc

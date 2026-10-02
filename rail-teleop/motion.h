@@ -12,6 +12,8 @@
 #define CONTROL_DT_S 0.001f
 #define PULSES_PER_MM (1600.0f / PITCH)
 #define MAX_PULSES 2000000L
+#define JOYSTICK_CENTER 471 /* 2.3 V with a 5.0 V ADC reference. */
+#define JOYSTICK_DEADBAND 25
 void motion_profile_step(float target, float *velocity, float *acceleration);
 float motion_stopping_distance(float velocity, float acceleration);
 float motion_safe_target(float target, float position, float velocity, float acceleration);

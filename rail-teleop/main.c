@@ -12,7 +12,7 @@
 #define STEP _BV(PB1)
 #define DIR _BV(PB0)
 #define ENABLE _BV(PD7)
-#define BUTTON _BV(PD2)
+#define BUTTON _BV(PB4)
 #define TIMER_HZ 40000UL
 #define TX_SIZE 64
 
@@ -42,7 +42,7 @@ static void disable(void)
 ISR(TIMER1_COMPA_vect)
 {
     /* Stop at the first sampled press; debounce is only needed to re-enable. */
-    bool pressed = !(PIND & BUTTON);
+    bool pressed = !(PINB & BUTTON);
     if (enabled && pressed && !previous_pressed)
         disable();
     previous_pressed = pressed;
@@ -169,7 +169,7 @@ static void control_cycle(int32_t pulses, bool did_stop)
         press_ready = false;
         serial_send("sp 0\n", true);
     }
-    bool pressed = !(PIND & BUTTON);
+    bool pressed = !(PINB & BUTTON);
     if (pressed) {
         released_ms = 0;
         if (pressed_ms < 20)
@@ -227,11 +227,11 @@ int main(void)
     PORTD &= (uint8_t)~ENABLE;
     DDRB |= STEP | DIR;
     DDRD |= ENABLE;
-    PORTD |= BUTTON;
-    ADMUX = _BV(REFS0); /* AVcc reference, ADC0 (A0). */
+    PORTB |= BUTTON;
+    ADMUX = _BV(REFS0) | _BV(MUX0); /* AVcc reference, ADC1 (A1). */
     ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) |
         _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0);
-    DIDR0 = _BV(ADC0D);
+    DIDR0 = _BV(ADC1D);
     UCSR0A = _BV(U2X0);
     UBRR0 = 16; /* 117647 baud, +2.1% from 115200 at 16 MHz. */
     UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);

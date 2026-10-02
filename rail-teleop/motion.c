@@ -144,10 +144,12 @@ float motion_safe_target(float target, float position, float velocity, float acc
 
 float joystick_velocity(unsigned sample)
 {
-    int offset = (int)sample - 512;
-    if (offset > 25)
-        return MAX_VEL * (offset - 25) / 486.0f;
-    if (offset < -25)
-        return MAX_VEL * (offset + 25) / 487.0f;
+    int offset = (int)sample - JOYSTICK_CENTER;
+    if (offset > JOYSTICK_DEADBAND)
+        return MAX_VEL * (offset - JOYSTICK_DEADBAND) /
+            (1023.0f - JOYSTICK_CENTER - JOYSTICK_DEADBAND);
+    if (offset < -JOYSTICK_DEADBAND)
+        return MAX_VEL * (offset + JOYSTICK_DEADBAND) /
+            (JOYSTICK_CENTER - JOYSTICK_DEADBAND);
     return 0.0f;
 }

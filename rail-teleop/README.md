@@ -18,8 +18,8 @@ From this directory:
 make build                          # build/rail-teleop.elf
 make build SCALE=0.1                 # default linear scale
 make test                           # requires a host C compiler
-make flash PORT=/dev/ttyUSB0         # old Nano bootloader, 57600 baud
-make flash PORT=/dev/ttyUSB0 BAUD=115200  # newer Nano bootloader
+make flash PORT=/dev/ttyUSB0         # newer Nano bootloader, 115200 baud
+make flash PORT=/dev/ttyUSB0 BAUD=57600  # old Nano bootloader
 make clean
 ```
 
@@ -31,8 +31,9 @@ Use the same `SCALE` on the flash command if you selected a nondefault scale.
 
 | Signal | Nano pin | Connection |
 | --- | --- | --- |
-| Joystick VRx | A0 | X-axis analog output |
-| Joystick SW | D2 | Button to GND; internal pull-up enabled |
+| Joystick VRx | A0 | Unused |
+| Joystick SW | D12 | Button to GND; internal pull-up enabled |
+| Joystick VRy | A1 | Y-axis analog output; velocity control |
 | Joystick power | 5V / GND | Module VCC / GND |
 | STEP | D9 | TB6600 PUL− |
 | DIR | D8 | TB6600 DIR− |
@@ -42,16 +43,19 @@ Use the same `SCALE` on the flash command if you selected a nondefault scale.
 The driver wiring is common anode. STEP pulses are active LOW. ENA LOW disables
 this module; ENA HIGH enables it. DIR HIGH commands motion away from the zero
 end. USB serial uses the Nano's D0/D1 UART; leave those pins free for USB.
-The joystick's Y axis is unused.
+The joystick's X axis is unused.
 
 ## Calibration and operation
 
 The firmware starts uncalibrated with the driver disabled. Move the carriage by
 hand to the same zero end used by rail-drive, then press the joystick. After
 20 ms of stable press, the firmware zeros its pulse count and enables the motor.
-It holds zero velocity until the joystick returns to center. Increasing VRx
-then commands positive velocity; decreasing VRx commands negative velocity.
-ADC midpoint is 512, with a 5% deadband and linear scaling outside it.
+It holds zero velocity until the joystick returns to center. Increasing VRy
+then commands positive velocity; decreasing VRy commands negative velocity.
+The center is ADC count 471 (measured 2.3 V, assuming a 5.0 V AVcc reference),
+with a ±25-count deadband (approximately 2.18–2.42 V) and linear scaling to
+full velocity at each voltage endpoint. Negative motion is blocked at position
+zero until the carriage has moved in the positive direction.
 
 The next button press immediately stops pulse generation and disables the driver,
 bypassing jerk and acceleration limits. `sp 0` is prioritized at the next control
@@ -101,6 +105,16 @@ sp -3.200
 Startup and disable also send `sp 0`. No incoming commands or acknowledgements
 are required. TX is buffered and nonblocking; a full queue drops whole telemetry
 lines, and disable discards queued telemetry after any line already in progress.
+
+To view serial output, install pyserial and run the receive-only monitor:
+
+```sh
+python3 -m pip install pyserial
+python3 serial_monitor.py /dev/ttyUSB0
+```
+
+On macOS, use the Nano's `/dev/cu.usbserial-*` port instead. The monitor uses
+115200 baud; press Ctrl+C to stop. Opening the serial port may reset the Nano.
 
 ## Verification
 
