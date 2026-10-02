@@ -3,7 +3,7 @@
 <package format="3">
   <name>rail_interface</name>
   <version>0.0.0</version>
-  <description>Lifecycle nodes for the rail firmware.</description>
+  <description>ROS nodes for the rail firmware.</description>
   <maintainer email="dmalexa5@ncsu.edu">dmalexa5</maintainer>
   <license>Apache-2.0</license>
 

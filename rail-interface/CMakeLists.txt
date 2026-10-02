@@ -31,13 +31,27 @@ ament_target_dependencies(rail-drive
   std_msgs
 )
 
+generate_parameter_library(
+  rail_teleop_parameters
+  src/rail-teleop.yaml
+)
+
+add_executable(rail-teleop src/rail-teleop.cpp)
+target_compile_features(rail-teleop PUBLIC cxx_std_17)
+target_include_directories(rail-teleop PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(rail-teleop rail_teleop_parameters)
+ament_target_dependencies(rail-teleop rclcpp std_msgs)
+
 install(
   DIRECTORY include/
   DESTINATION include
 )
 
 install(
-  TARGETS rail-drive rail_drive_parameters
+  TARGETS rail-drive rail_drive_parameters rail-teleop rail_teleop_parameters
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
