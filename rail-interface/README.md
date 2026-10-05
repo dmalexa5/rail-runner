@@ -15,9 +15,10 @@ ros2 run rail_interface rail-teleop --ros-args -p serial.port:=/dev/ttyUSB0
 ```
 
 Teleop uses fixed 115200 baud and publishes `std_msgs/msg/Float64` in m/s on
-`rail_velocity`. Override `command_topic` to select another topic. Serial output
-begins after the firmware's first joystick press. Silence produces no ROS
-messages; serial connection failures end the node.
+`rail_velocity`, scaled by `scale` (default 1.0). Override `command_topic` to
+select another topic. Serial output begins after the firmware's first joystick
+press. Silence produces no ROS messages; serial connection failures end the
+node.
 
 ```sh
 colcon test --packages-select rail_interface
