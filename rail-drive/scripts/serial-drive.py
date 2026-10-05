@@ -286,7 +286,7 @@ def apply_command(
             return mode, calibrated, setpoint, None, None
         shared.clear_sample()
         shared.set_mode("calibrating")
-        emit("command: calibrating (30 second firmware timeout)")
+        emit("command: calibrating (90 second firmware timeout)")
         return "cal", False, setpoint, None, "cal\n"
 
     if command.kind == "sp":

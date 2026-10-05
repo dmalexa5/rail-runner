@@ -29,12 +29,15 @@ void board_init(void)
     gpio.Alternate = BOARD_UART_GPIO_AF;
     HAL_GPIO_Init(BOARD_UART_GPIO_PORT, &gpio);
 
-    gpio.Pin = BOARD_HARD_LIMIT_PIN | BOARD_ESTOP_PIN;
+    gpio.Pin = BOARD_ESTOP_PIN;
     gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLUP;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     gpio.Alternate = 0;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_Init(BOARD_ESTOP_GPIO_PORT, &gpio);
+
+    gpio.Pin = BOARD_HARD_LIMIT_PIN;
+    HAL_GPIO_Init(BOARD_HARD_LIMIT_GPIO_PORT, &gpio);
 
     gpio.Pin = BOARD_OPTICAL_MIN_PIN;
     HAL_GPIO_Init(BOARD_OPTICAL_MIN_GPIO_PORT, &gpio);

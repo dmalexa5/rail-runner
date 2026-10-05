@@ -8,7 +8,7 @@
 #include "uart.h"
 
 #define HOST_TIMEOUT_MS 50U
-#define CALIBRATION_TIMEOUT_MS 30000U
+#define CALIBRATION_TIMEOUT_MS 90000U
 #define FEEDBACK_TIMEOUT_MS 10U
 #define OPTICAL_DEBOUNCE_CYCLES 5U
 #define TWO_PI 6.28318530718f
@@ -65,7 +65,6 @@ static uint32_t feedback_sequence;
 static uint32_t last_feedback_tick;
 static uint32_t last_host_tick;
 static uint32_t calibration_start_tick;
-static int16_t previous_position_counts;
 static ak60_state_t motor;
 
 static bool optical_candidate;
@@ -142,11 +141,6 @@ static void update_optical_switch(void)
     }
 }
 
-static float counts_to_mm(int16_t counts)
-{
-    return MOTOR_DIRECTION * (float)counts * 0.1f * PITCH / 360.0f;
-}
-
 static float erpm_to_mm_s(int16_t erpm_counts)
 {
     float erpm = (float)erpm_counts * 10.0f;
@@ -179,18 +173,6 @@ static void consume_feedback(uint32_t now)
         feedback_seen = true;
         set_fault(FAULT_MOTOR);
         return;
-    }
-
-    if (feedback_seen)
-    {
-        int16_t delta = (int16_t)((uint16_t)sample.position_counts -
-                                  (uint16_t)previous_position_counts);
-        position_mm += counts_to_mm(delta);
-        previous_position_counts = sample.position_counts;
-    }
-    else
-    {
-        previous_position_counts = sample.position_counts;
     }
 
     motor = sample;
@@ -236,7 +218,8 @@ static float position_safe_target(float target)
     float candidate_acceleration = command_acceleration_mm_s2;
     motion_profile_step(target, &candidate_velocity, &candidate_acceleration);
 
-    if (candidate_velocity > 0.0f)
+    if (candidate_velocity > 0.0f &&
+        !(position_mm >= MAX_POS - POSITION_MARGIN && target < 0.0f))
     {
         float remaining = MAX_POS - POSITION_MARGIN - position_mm;
         float next_motion = 0.5f * (command_velocity_mm_s +
@@ -247,7 +230,8 @@ static float position_safe_target(float target)
             return 0.0f;
         }
     }
-    else if (candidate_velocity < 0.0f)
+    else if (candidate_velocity < 0.0f &&
+             !(position_mm <= MIN_POS + POSITION_MARGIN && target > 0.0f))
     {
         float remaining = position_mm - (MIN_POS + POSITION_MARGIN);
         float next_motion = -0.5f * (command_velocity_mm_s +
@@ -328,6 +312,18 @@ static void handle_request(const protocol_request_t *request, uint32_t now,
 
     if (fault != FAULT_NONE)
     {
+        if (fault == FAULT_HARD_LIMIT &&
+            request->type == PROTOCOL_REQUEST_CALIBRATE &&
+            calibration_preflight_ok(now, &response->type))
+        {
+            fault = FAULT_NONE;
+            stop_fault = FAULT_NONE;
+            command_velocity_mm_s = 0.0f;
+            command_acceleration_mm_s2 = 0.0f;
+            start_calibration(now);
+            response->type = PROTOCOL_RESPONSE_CALIBRATING;
+            return;
+        }
         if (request->type == PROTOCOL_REQUEST_DISARM && fault_can_clear(now))
         {
             fault = FAULT_NONE;
@@ -492,6 +488,10 @@ static void run_control_cycle(void)
         set_fault(FAULT_HARD_LIMIT);
     }
     consume_feedback(now);
+    if (feedback_fresh(now) && motor.error == 0U)
+    {
+        position_mm += velocity_mm_s * CONTROL_PERIOD_US / 1000000.0f;
+    }
     update_optical_switch();
 
     if ((state == STATE_CALIBRATING || state == STATE_ACTIVE ||

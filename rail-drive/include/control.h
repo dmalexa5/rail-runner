@@ -9,10 +9,10 @@
 #define CONTROL_PERIOD_US 1000U
 
 #define MIN_POS 0.0f
-#define MAX_POS 500.0f
+#define MAX_POS 420.0f
 #define POSITION_MARGIN 2.0f
-#define CAL_VEL (-10.0f)
-#define PITCH 4.0f
+#define CAL_VEL (-5.0f)
+#define PITCH 5.0f
 #define MOTOR_DIRECTION 1.0f
 
 /** Initializes the drive board's deactivated control state. */

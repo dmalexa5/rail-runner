@@ -17,12 +17,12 @@ Hardcoded `#define` constants
 - `MAX_POS` 500 mm
 - `POSITION_MARGIN` is 2 mm, so normal motion brakes to the 2--498 mm operating envelope. Inside either margin, only motion back toward the operating envelope is allowed.
 - `CAL_VEL` is -10 mm/s 
-- `PITCH` is 4 mm/rev
+- `PITCH` is 5 mm/rev
 - Safety limits use a time-optimal jerk-limited velocity profile
 
-The AK60 uses CubeMars extended-ID CAN at 1 Mbps with motor ID 2 and 500 Hz feedback. The drive must already be configured for MIT torque mode, 48 V, a 5 A current cap, and zero torque after 10 ms without CAN commands. Each active command is one 8-byte packet-type-8 frame containing zero Kp, the selected Kd, zero position, output-shaft velocity in rad/s, and zero feed-forward torque. Deactivated and faulted states send the same frame with all five logical fields zero.
+The AK60-6 V3 uses CubeMars extended-ID CAN at 1 Mbps with motor ID 2 and 500 Hz feedback. The drive must already be configured for MIT torque mode, 48 V, a 5 A current cap, and zero torque after 10 ms without CAN commands. Each active command is one 8-byte packet-type-8 frame containing zero Kp, the selected Kd, zero position, output-shaft velocity in rad/s, and zero feed-forward torque. Deactivated and faulted states send the same frame with all five logical fields zero.
 
-Servo position feedback is treated as signed 0.1-degree output position with natural int16 rollover and is unwrapped in firmware. Calibration establishes a firmware-local position origin without changing the motor's internal origin or feedback configuration. This rollover behavior and the positive motor direction must be checked on hardware before calibration.
+Rail position integrates measured velocity from the existing `0x2902` status feedback at the 1 kHz control rate while feedback is fresh and fault-free. Electrical RPM is converted using 14 pole pairs, 6:1 reduction, and `PITCH`. The 16-bit position field is not used. Calibration establishes a firmware-local origin at the confirmed optical clear edge without changing the motor's internal origin or CAN feedback configuration. Verify travel scale and positive motor direction on hardware.
 
 Comms with ros2 lifecycle node specified in `rail-interface/SPEC.md` occur over a 115200 baud serial interface at a 250 Hz transaction rate:
 - requests receive one reply, except that `cal` also emits its completion reply asynchronously
@@ -41,7 +41,7 @@ Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most 
 `<rec>` <-- `<reply>`
 
 - `cal` <-- `cal` while calibrating, then `ack <pos> <vel> 0.0` when done
-    - `cal` is sent once. Calibration times out after 30 seconds with `err cal`.
+    - `cal` is sent once. Calibration times out after 90 seconds with `err cal`.
     - If the debounced MIN optical switch is clear, ramp to -10 mm/s until it asserts. If already asserted, begin backing off immediately.
     - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the firmware position origin to the first clear sample in that confirmed interval.
     - Brake to zero commanded velocity and acceleration. Calibration completes in active zero-velocity mode at the resulting positive measured position and does not wait for measured velocity to settle.
@@ -57,7 +57,7 @@ Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most 
 | `err cal` | Non-`cal` during calibration | Deactivate | No |
 | `err dis` | Non-`cal` while deactivated | Stay deactivated | No |
 | `err lim` | Setpoint exceeds velocity limit | Deactivate | Yes |
-| `err hrd` | Hardstop pressed | Disable motor; manual reset | Yes |
+| `err hrd` | Hardstop pressed | Disable motor; release switch and send `cal` | Yes |
 | `err est` | Estop pressed | Disable motor | Yes |
 | `err pos` | Motion farther outside 2--498 mm | Hold zero; allow inward motion | No |
 | `err com` | Host command timeout | Limited stop; deactivate | Yes |
@@ -69,9 +69,9 @@ Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most 
 
 All fatal faults invalidate calibration. 
 
-Fault priority is estop, hard limit, system, motor, CAN, velocity limit, communication, then calibration/state/parser errors. A healthy `dis` clears a pending firmware fault without first reporting it; motor and CAN faults require fresh fault-free feedback. Hard-limit and estop recovery requires physical reset, `dis`, and a new calibration.
+Fault priority is estop, hard limit, system, motor, CAN, velocity limit, communication, then calibration/state/parser errors. A healthy `dis` clears a pending firmware fault without first reporting it; motor and CAN faults require fresh fault-free feedback. Hard-limit recovery requires physical reset and a new `cal`, which clears the hard-limit fault after calibration preflight succeeds. Estop recovery requires physical reset, `dis`, and a new calibration.
 
-The MIN and MAX hard-limit switches share a normally-open, active-low input sensed on PA0. The normally-closed estop relay chain is sensed on PA1. Both independently remove motor power while leaving the Nucleo powered. The normally-open, active-low MIN optical calibration switch is sensed on PC0. Emergency inputs are acted on immediately; only the optical input is debounced.
+The MIN and MAX hard-limit switches share a normally-open, active-low input sensed on PC8. The normally-closed estop relay chain is sensed on PA1. Both independently remove motor power while leaving the Nucleo powered. The normally-open, active-low MIN optical calibration switch is sensed on PC9. Emergency inputs are acted on immediately; only the optical input is debounced.
 
 ### Hotloop
 
@@ -97,9 +97,9 @@ The NUCLEO-F446RE connections for `BOARD=drive` are:
 |---|---|---|---|
 | CAN receive | D15, CN5 pin 10 | PB8 / CAN1_RX | CAN transceiver RXD |
 | CAN transmit | D14, CN5 pin 9 | PB9 / CAN1_TX | CAN transceiver TXD |
-| Hard-limit chain | CN7 pin 28 | PA0 | Normally-open switch contact to GND |
+| Hard-limit chain | CN10 pin 2 | PC8 | Normally-open switch contact to GND |
 | Estop chain | CN7 pin 30 | PA1 | Normally-closed relay contact to GND |
-| MIN optical switch | CN7 pin 38 | PC0 | Normally-open switch output to GND |
+| MIN optical switch | CN10 pin 1 | PC9 | Normally-open switch output to GND |
 | Serial transmit | D1, CN9 pin 2 | PA2 / USART2_TX | Onboard ST-LINK USB virtual COM |
 | Serial receive | D0, CN9 pin 1 | PA3 / USART2_RX | Onboard ST-LINK USB virtual COM |
 | Logic ground | CN7 pin 20 or 22 | GND | All external logic grounds |

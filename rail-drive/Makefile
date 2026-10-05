@@ -1,18 +1,11 @@
-BOARD ?= drive
-
-ifneq ($(BOARD),drive)
-$(error Unsupported BOARD '$(BOARD)'; expected drive)
-endif
-
-TARGET = rail-$(BOARD)
+TARGET = rail-drive
 
 CC      = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
 SIZE    = arm-none-eabi-size
 
-BUILD_ROOT = build
-BUILD_DIR = $(BUILD_ROOT)/$(BOARD)
-ELF = $(BUILD_ROOT)/$(TARGET).elf
+BUILD_DIR = build
+ELF = $(BUILD_DIR)/$(TARGET).elf
 
 CPU = -mcpu=cortex-m4
 FPU = -mfpu=fpv4-sp-d16
@@ -44,7 +37,7 @@ INCLUDES = \
     -Ivendor/STM32CubeF4/Drivers/CMSIS/Device/ST/STM32F4xx/Include \
     -Ivendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc
 
-COMMON_SOURCES = \
+SOURCES = \
     src/control_timer.c \
     src/main.c \
     src/motion.c \
@@ -59,17 +52,13 @@ COMMON_SOURCES = \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c \
     vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/syscalls.c \
-    vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/sysmem.c
-
-BOARD_SOURCES = \
+    vendor/STM32CubeF4/Projects/STM32446E-Nucleo/Templates/STM32CubeIDE/Example/User/sysmem.c \
     src/ak60.c \
     src/board.c \
     src/can.c \
     src/control.c \
     src/protocol.c \
     vendor/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_can.c
-
-SOURCES = $(COMMON_SOURCES) $(BOARD_SOURCES)
 
 ASM_SOURCES = \
     startup/startup_stm32f446xx.s
@@ -96,7 +85,9 @@ $(BUILD_DIR)/%.o: %.s
 
 flash: $(ELF)
 	openocd \
-	-f board/st_nucleo_f4.cfg \
+	-f interface/stlink-dap.cfg \
+	-f target/stm32f4x.cfg \
+	-c "reset_config srst_only srst_nogate connect_assert_srst" \
 	-c "program $(ELF) verify reset exit"
 
 debug: $(ELF)
@@ -106,4 +97,4 @@ debug: $(ELF)
 	$(ELF)
 
 clean:
-	rm -rf $(BUILD_ROOT)
+	rm -rf $(BUILD_DIR)
