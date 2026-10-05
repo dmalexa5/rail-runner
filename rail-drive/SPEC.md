@@ -14,9 +14,9 @@ Hardcoded `#define` constants
 - `MAX_ACC` 50 mm/s^2
 - `MAX_VEL` 32 mm/s
 - `MIN_POS` 0 mm
-- `MAX_POS` 500 mm
-- `POSITION_MARGIN` is 2 mm, so normal motion brakes to the 2--498 mm operating envelope. Inside either margin, only motion back toward the operating envelope is allowed.
-- `CAL_VEL` is -10 mm/s 
+- `MAX_POS` 420 mm
+- `POSITION_MARGIN` is 2 mm, so normal motion brakes to the 2--418 mm operating envelope. Inside either margin, only motion back toward the operating envelope is allowed.
+- `CAL_VEL` is -4 mm/s 
 - `PITCH` is 5 mm/rev
 - Safety limits use a time-optimal jerk-limited velocity profile
 
@@ -42,7 +42,7 @@ Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most 
 
 - `cal` <-- `cal` while calibrating, then `ack <pos> <vel> 0.0` when done
     - `cal` is sent once. Calibration times out after 90 seconds with `err cal`.
-    - If the debounced MIN optical switch is clear, ramp to -10 mm/s until it asserts. If already asserted, begin backing off immediately.
+    - If the debounced MIN optical switch is clear, ramp to -4 mm/s until it asserts. If already asserted, begin backing off immediately.
     - Reverse with the normal jerk/acceleration limits until the optical switch has been clear for 5 ms. Set the firmware position origin to the first clear sample in that confirmed interval.
     - Brake to zero commanded velocity and acceleration. Calibration completes in active zero-velocity mode at the resulting positive measured position and does not wait for measured velocity to settle.
 - `dis` <-- `dis` immediately. `dis` is sent once. Continue with a jerk-limited stop, switch to the all-zero MIT command, invalidate calibration, and enter the deactivated state.
@@ -59,7 +59,7 @@ Requests use the exact grammar `cal`, `dis`, `sp <signed-decimal>` with at most 
 | `err lim` | Setpoint exceeds velocity limit | Deactivate | Yes |
 | `err hrd` | Hardstop pressed | Disable motor; release switch and send `cal` | Yes |
 | `err est` | Estop pressed | Disable motor | Yes |
-| `err pos` | Motion farther outside 2--498 mm | Hold zero; allow inward motion | No |
+| `err pos` | Motion farther outside 2--418 mm | Hold zero; allow inward motion | No |
 | `err com` | Host command timeout | Limited stop; deactivate | Yes |
 | `err mot` | CubeMars fault | Send all-zero MIT command | Yes |
 | `err can` | TX failure or 10 ms feedback loss | Send all-zero MIT command | Yes |

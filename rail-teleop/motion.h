@@ -7,7 +7,7 @@
 #define MAX_JRK (50.0f / SCALE)
 #define MAX_ACC (50.0f / SCALE)
 #define MAX_VEL (32.0f * SCALE)
-#define MAX_POS (500.0f * SCALE)
+#define MAX_POS (420.0f * SCALE)
 #define POSITION_MARGIN (2.0f * SCALE)
 #define TRAVEL_PER_REV_MM (20.0f * 3.14159265358979323846f)
 #define CONTROL_DT_S 0.001f

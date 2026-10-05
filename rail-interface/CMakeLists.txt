@@ -51,7 +51,7 @@ install(
 )
 
 install(
-  TARGETS rail-drive rail_drive_parameters rail-teleop rail_teleop_parameters
+  TARGETS rail-drive rail-teleop
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

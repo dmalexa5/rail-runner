@@ -15,7 +15,7 @@ static void check_step(float target, float *v, float *a)
 
 int main(void)
 {
-    assert(fabsf(MAX_POS / SCALE - 500.0f) < 0.001f);
+    assert(fabsf(MAX_POS / SCALE - 420.0f) < 0.001f);
     assert(fabsf(MAX_VEL / SCALE - 32.0f) < 0.001f);
     assert(fabsf(MAX_ACC * SCALE - 50.0f) < 0.001f);
     assert(fabsf(MAX_JRK * SCALE - 50.0f) < 0.001f);

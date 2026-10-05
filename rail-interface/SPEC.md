@@ -37,16 +37,17 @@ The do-nothing unconfigured state
 **Configuring** — Unconfigured → Inactive
 - Load parameters with generate parameters ros2 library
     - [rail-drive.yaml](./src/rail-drive.yaml) for drive node params
-- Open the serial link at 230400 baud and require a successful `dis 0` handshake. If this fails, enter Finalized.
+- Open the serial link at 115200 baud and require a successful `dis` handshake. If this fails, enter Finalized.
+- Set the firmware velocity gain with `kd 1.000`, requiring the `kd 1.000` echo. The gain persists until the MCU resets, so it is set once here rather than per activation. If this fails, enter Finalized.
 
 ---
 
 **Inactive** state
-The passive, connection-established state. A `dis 0` acknowledgement means the firmware accepted the disable request; its limited stop to 0 A may still be completing.
+The passive, connection-established state. A `dis` acknowledgement means the firmware accepted the disable request; its limited stop to 0 A may still be completing.
 
 **Activating** — Inactive → Active
-- Run calibration (see [rail-drive/SPEC.md](../rail-drive/SPEC.md) for calibration protocol)
-- If calibration succeeds within the configured timeout, enter Active. Otherwise, recover to Unconfigured only if `dis 0` succeeds.
+- Run calibration (see [rail-drive/SPEC.md](../rail-drive/SPEC.md) for calibration protocol). `cal` is sent once; the node then reads without transmitting until the firmware's asynchronous completion `ack` arrives, because the firmware only emits that reply on a cycle with no pending request.
+- If calibration succeeds within `calibration_timeout`, enter Active. Otherwise, recover to Unconfigured only if `dis` succeeds. The default is 95 s so the firmware's own 90 s `err cal` is authoritative rather than the host giving up first.
 
 **CleaningUp** — Inactive → Unconfigured
 - Send disable message to verify healthy state. If fails, shutdown.
@@ -63,7 +64,9 @@ See [rail-drive/SPEC.md](../rail-drive/SPEC.md) for each respective communicatio
 
 Note that due to the nature of the design, either system should work independantly of whether the other is launched.
 
-`rail-drive` performs strict request/reply transactions on a 500 Hz wall timer. Stale or invalid ROS commands produce `sp 0.0`. A nonfatal `err pos` leaves the node Active; any other firmware error or communication failure finalizes it after a best-effort disable.
+`rail-drive` performs strict request/reply transactions on a 250 Hz wall timer. Stale or invalid ROS commands produce `sp 0.0`, so the node always streams a value. A nonfatal `err pos` leaves the node Active; any other firmware error or communication failure finalizes it after a best-effort disable.
+
+The 250 Hz rate is bounded by the serial link, not by control bandwidth. A worst-case transaction is 31 bytes (`sp -32.0` plus `ack 420.0 -32.0 -50.0`), and at 115200 baud 8N1 the link carries 11520 B/s, so 250 Hz uses 67% of it while 500 Hz would oversubscribe it and overflow the firmware UART into `err sys`. A 4 ms period still leaves 12.5x margin on the firmware's 50 ms host watchdog, which the node mirrors as its own stale-command threshold.
 
 **Deactivating** — Active → Inactive
 - Send disable message to verify healthy connection. If fails, shutdown. Otherwise, enter inactive state.

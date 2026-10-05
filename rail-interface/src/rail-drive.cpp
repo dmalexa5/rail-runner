@@ -15,7 +15,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 
 #include <rclcpp/rclcpp.hpp>
@@ -31,9 +30,9 @@ namespace
 
 using namespace std::chrono_literals;
 
-constexpr auto kUpdatePeriod = 2ms;
-constexpr auto kReplyTimeout = 5ms;
-constexpr auto kCommandTimeout = 20ms;
+constexpr auto kUpdatePeriod = 4ms;
+constexpr auto kReplyTimeout = 10ms;
+constexpr auto kCommandTimeout = 50ms;
 constexpr double kMaximumVelocityMps = 0.032;
 constexpr std::size_t kMaximumReplyLength = 95U;
 
@@ -72,8 +71,8 @@ public:
     settings.c_cflag = (settings.c_cflag & ~CSIZE) | CS8;
     settings.c_cc[VMIN] = 0;
     settings.c_cc[VTIME] = 0;
-    if (::cfsetispeed(&settings, B230400) < 0 ||
-      ::cfsetospeed(&settings, B230400) < 0 ||
+    if (::cfsetispeed(&settings, B115200) < 0 ||
+      ::cfsetospeed(&settings, B115200) < 0 ||
       ::tcsetattr(fd_, TCSANOW, &settings) < 0 ||
       ::tcflush(fd_, TCIOFLUSH) < 0)
     {
@@ -118,6 +117,25 @@ public:
       }
     }
 
+    return read_until(deadline, reply, error);
+  }
+
+  /** Waits for one unsolicited reply line, for the firmware's late `cal` ack. */
+  bool read_line(
+    std::chrono::steady_clock::duration timeout, std::string & reply, std::string & error)
+  {
+    if (fd_ < 0) {
+      error = "serial port is closed";
+      return false;
+    }
+    return read_until(std::chrono::steady_clock::now() + timeout, reply, error);
+  }
+
+private:
+  bool read_until(
+    const std::chrono::steady_clock::time_point & deadline, std::string & reply,
+    std::string & error)
+  {
     reply.clear();
     while (reply.size() <= kMaximumReplyLength) {
       char ch = '\0';
@@ -143,7 +161,6 @@ public:
     return false;
   }
 
-private:
   bool wait_for(
     short events, const std::chrono::steady_clock::time_point & deadline,
     std::string & error)
@@ -285,6 +302,7 @@ struct RailDrive::Impl
   CallbackReturn configure()
   {
     recover_to_unconfigured = false;
+    RCLCPP_INFO(node.get_logger(), "Configuring...");
     try {
       parameters = parameter_listener->get_params();
     } catch (const std::exception & exception) {
@@ -307,7 +325,7 @@ struct RailDrive::Impl
       destroy_interfaces();
       return CallbackReturn::ERROR;
     }
-    if (!disable()) {
+    if (!disable() || !set_gain()) {
       serial.close_port();
       destroy_interfaces();
       return CallbackReturn::ERROR;
@@ -318,40 +336,8 @@ struct RailDrive::Impl
   CallbackReturn activate()
   {
     recover_to_unconfigured = false;
-    const auto deadline = std::chrono::steady_clock::now() +
-      std::chrono::duration<double>(parameters->calibration_timeout);
-    auto next_request = std::chrono::steady_clock::now();
-    bool calibrated = false;
-
-    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
-      std::string reply;
-      std::string error;
-      if (!serial.transact("cal 0\n", reply, error)) {
-        RCLCPP_ERROR(node.get_logger(), "Calibration transaction failed: %s", error.c_str());
-        break;
-      }
-
-      Feedback feedback{};
-      if (parse_ack(reply, feedback)) {
-        calibrated = true;
-        break;
-      }
-      if (reply != "cal 0") {
-        RCLCPP_ERROR(node.get_logger(), "Calibration failed with reply '%s'", reply.c_str());
-        break;
-      }
-
-      next_request += kUpdatePeriod;
-      const auto now = std::chrono::steady_clock::now();
-      if (next_request > now) {
-        std::this_thread::sleep_until(next_request);
-      }
-    }
-
-    if (!calibrated) {
-      if (rclcpp::ok() && std::chrono::steady_clock::now() >= deadline) {
-        RCLCPP_ERROR(node.get_logger(), "Calibration timed out");
-      }
+    RCLCPP_INFO(node.get_logger(), "Activating...");
+    if (!calibrate()) {
       recover_to_unconfigured = disable();
       return CallbackReturn::ERROR;
     }
@@ -447,6 +433,59 @@ struct RailDrive::Impl
     }
   }
 
+  /** Sends `cal` once, then waits for the firmware's asynchronous completion ack. */
+  bool calibrate()
+  {
+    const auto deadline = std::chrono::steady_clock::now() +
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(parameters->calibration_timeout));
+    std::string reply;
+    std::string error;
+    if (!serial.transact("cal\n", reply, error)) {
+      RCLCPP_ERROR(node.get_logger(), "Calibration request failed: %s", error.c_str());
+      return false;
+    }
+
+    while (reply == "cal") {
+      const auto now = std::chrono::steady_clock::now();
+      if (!rclcpp::ok()) {
+        return false;
+      }
+      if (now >= deadline) {
+        RCLCPP_ERROR(node.get_logger(), "Calibration timed out");
+        return false;
+      }
+      if (!serial.read_line(deadline - now, reply, error)) {
+        RCLCPP_ERROR(node.get_logger(), "Calibration wait failed: %s", error.c_str());
+        return false;
+      }
+    }
+
+    Feedback feedback{};
+    if (parse_ack(reply, feedback)) {
+      RCLCPP_INFO(node.get_logger(), "Calibrated at %.4f m", feedback.position_mm / 1000.0);
+      return true;
+    }
+    RCLCPP_ERROR(node.get_logger(), "Calibration failed with reply '%s'", reply.c_str());
+    return false;
+  }
+
+  /** Sets the firmware velocity gain, which persists until the MCU resets. */
+  bool set_gain()
+  {
+    std::string reply;
+    std::string error;
+    if (!serial.transact("kd 1.000\n", reply, error)) {
+      RCLCPP_ERROR(node.get_logger(), "Gain transaction failed: %s", error.c_str());
+      return false;
+    }
+    if (reply != "kd 1.000") {
+      RCLCPP_ERROR(node.get_logger(), "Gain returned '%s'", reply.c_str());
+      return false;
+    }
+    return true;
+  }
+
   bool disable()
   {
     if (!serial.is_open()) {
@@ -454,11 +493,11 @@ struct RailDrive::Impl
     }
     std::string reply;
     std::string error;
-    if (!serial.transact("dis 0\n", reply, error)) {
+    if (!serial.transact("dis\n", reply, error)) {
       RCLCPP_ERROR(node.get_logger(), "Disable transaction failed: %s", error.c_str());
       return false;
     }
-    if (reply != "dis 0") {
+    if (reply != "dis") {
       RCLCPP_ERROR(node.get_logger(), "Disable returned '%s'", reply.c_str());
       return false;
     }

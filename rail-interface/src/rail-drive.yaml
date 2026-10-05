@@ -22,8 +22,8 @@ rail_drive:
     read_only: true
   calibration_timeout:
     type: double
-    default_value: 60.0
-    description: "Maximum calibration duration in seconds."
+    default_value: 95.0
+    description: "Host-side calibration timeout in seconds; exceeds the firmware 90 s limit."
     read_only: true
     validation:
       gt<>: [0.0]

@@ -75,19 +75,19 @@ Acceleration and jerk are divided by `SCALE`:
 | Quantity | Formula | Default (`SCALE=0.2`) |
 | --- | --- | --- |
 | Belt travel per revolution | π × 20 mm (unscaled) | 62.83 mm/revolution |
-| Position limits | 0–500 × scale mm | 0–100 mm |
+| Position limits | 0–420 × scale mm | 0–84 mm |
 | Position margin | 2 × scale mm | 0.4 mm |
 | Velocity limit | ±32 × scale mm/s | ±6.4 mm/s |
 | Acceleration limit | ±50 ÷ scale mm/s² | ±250 mm/s² |
 | Jerk limit | ±50 ÷ scale mm/s³ | ±250 mm/s³ |
 
 The motion loop uses rail-drive's jerk-limited velocity profile and stopping-distance
-calculation. It brakes toward the interior envelope (0.4–99.6 mm by default).
+calculation. It brakes toward the interior envelope (0.4–83.6 mm by default).
 Within either margin, only inward commands are accepted. Physical bounds also
 prevent outward pulses. The belt gear is assumed to have an effective driving
 diameter of 20 mm, giving 62.83 mm/revolution and 50.93 pulses/mm at 3200 pulses/revolution.
 Linear speed is pulse frequency × 62.83 / 3200 mm/s. At the default scale,
-maximum pulse rate is 325.95 Hz and the travel bound is 5092 pulses (rounded down).
+maximum pulse rate is 325.95 Hz and the travel bound is 4278 pulses (rounded down).
 
 Timer1 releases a 40 kHz ISR. An integer phase accumulator schedules pulses and
 counts signed position; floating-point motion calculations run outside the ISR
