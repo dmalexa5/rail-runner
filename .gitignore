@@ -6,6 +6,7 @@ install/
 # workspace
 .colcon/
 .ros
+compile_commands.json
 
 # python
 __pycache__/
@@ -32,3 +33,5 @@ cmake-build-release/
 
 # vendor
 vendor/
+
+
