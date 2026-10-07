@@ -10,7 +10,7 @@
 #define AK60_POLE_PAIRS 14.0f
 #define AK60_REDUCTION 6.0f
 #define AK60_RATED_OUTPUT_RPM 490.0f
-#define AK60_DEFAULT_KD 0.1f
+#define AK60_DEFAULT_KD 1.0f
 
 typedef struct
 {
