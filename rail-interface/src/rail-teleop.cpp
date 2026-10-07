@@ -75,7 +75,6 @@ struct RailTeleop::Impl
     if (parameters.serial.port.empty() || parameters.command_topic.empty()) {
       throw std::runtime_error("Serial port and command topic must not be empty");
     }
-    scale = parameters.scale;
     serial.open_port(parameters.serial.port);
     publisher = node.create_publisher<std_msgs::msg::Float64>(
       parameters.command_topic, rclcpp::SensorDataQoS().keep_last(1U));
@@ -144,7 +143,7 @@ struct RailTeleop::Impl
       return;
     }
     std_msgs::msg::Float64 message;
-    message.data = scale * velocity / 1000.0;
+    message.data = velocity / 1000.0;
     publisher->publish(message);
   }
 
@@ -159,7 +158,6 @@ struct RailTeleop::Impl
   SerialPort serial;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr publisher;
   rclcpp::TimerBase::SharedPtr timer;
-  double scale{};
   std::string line;
   bool discarding{false};
 };

@@ -1,7 +1,7 @@
 # rail-teleop
 
 Bare-metal C joystick controller for an ELEGOO Nano V3 (16 MHz ATmega328P),
-a NEMA17 stepper, and a TB6600 driver configured for **3200 pulses/revolution**.
+a NEMA17 stepper, and a TB6600 driver configured for **6400 pulses/revolution**.
 The Nano drives the motor directly and reports its limited velocity over USB serial.
 
 ## Build and flash
@@ -16,7 +16,7 @@ From this directory:
 
 ```sh
 make build                          # build/rail-teleop.elf
-make build SCALE=0.2                 # default linear scale
+make build SCALE=0.35              # default linear scale
 make test                           # requires a host C compiler
 make flash PORT=/dev/ttyUSB0         # newer Nano bootloader, 115200 baud
 make flash PORT=/dev/ttyUSB0 BAUD=57600  # old Nano bootloader
@@ -70,24 +70,24 @@ Missed steps or manual movement while disabled are not measured.
 ## Limits and timing
 
 Position, velocity, and margin are multiplied by the build-time `SCALE`.
-Acceleration and jerk are divided by `SCALE`:
+Acceleration and jerk are independent of `SCALE`:
 
-| Quantity | Formula | Default (`SCALE=0.2`) |
+| Quantity | Formula | Default (`SCALE=0.35`) |
 | --- | --- | --- |
 | Belt travel per revolution | π × 20 mm (unscaled) | 62.83 mm/revolution |
-| Position limits | 0–420 × scale mm | 0–84 mm |
-| Position margin | 2 × scale mm | 0.4 mm |
-| Velocity limit | ±32 × scale mm/s | ±6.4 mm/s |
-| Acceleration limit | ±50 ÷ scale mm/s² | ±250 mm/s² |
-| Jerk limit | ±50 ÷ scale mm/s³ | ±250 mm/s³ |
+| Position limits | 0–420 × scale mm | 0–147 mm |
+| Position margin | 2 × scale mm | 0.7 mm |
+| Velocity limit | ±32 × scale mm/s | ±11.200 mm/s |
+| Acceleration limit | ±100 mm/s² | ±100 mm/s² |
+| Jerk limit | ±150 mm/s³ | ±150 mm/s³ |
 
 The motion loop uses rail-drive's jerk-limited velocity profile and stopping-distance
-calculation. It brakes toward the interior envelope (0.4–83.6 mm by default).
+calculation. It brakes toward the interior envelope (0.7–146.3 mm by default).
 Within either margin, only inward commands are accepted. Physical bounds also
 prevent outward pulses. The belt gear is assumed to have an effective driving
-diameter of 20 mm, giving 62.83 mm/revolution and 50.93 pulses/mm at 3200 pulses/revolution.
-Linear speed is pulse frequency × 62.83 / 3200 mm/s. At the default scale,
-maximum pulse rate is 325.95 Hz and the travel bound is 4278 pulses (rounded down).
+diameter of 20 mm, giving 62.83 mm/revolution and 101.86 pulses/mm at 6400 pulses/revolution.
+Linear speed is pulse frequency × 62.83 / 6400 mm/s. At the default scale,
+maximum pulse rate is 1140.82 Hz and the travel bound is 14973 pulses (rounded down).
 
 Timer1 releases a 40 kHz ISR. An integer phase accumulator schedules pulses and
 counts signed position; floating-point motion calculations run outside the ISR
@@ -96,13 +96,14 @@ pulses and one setup tick after direction changes. Nominal tick duration is 25 �
 actual edge timing includes interrupt latency. Missed control ticks coalesce into one pending control cycle.
 
 Serial sends newline-terminated `sp <vel>` at 100 Hz. Velocity is the calibrated
-joystick command in mm/s, with three decimal places. Track position, motor
+unscaled joystick command in mm/s (±32.000 at full deflection), with three
+decimal places. `SCALE` affects motor motion but does not affect telemetry. Track position, motor
 enable state, acceleration, and jerk do not constrain this value:
 
 ```text
 sp 0.000
 sp 1.250
-sp -6.400
+sp -32.000
 ```
 
 Serial output begins after the first press. No incoming commands or
@@ -121,7 +122,7 @@ On macOS, use the Nano's `/dev/cu.usbserial-*` port instead. The monitor uses
 
 ## Verification
 
-`make test` runs host motion simulations at scales 0.2 and 1.0, plus tests against
+`make test` runs host motion simulations at scales 0.35 and 1.0, plus tests against
 mocked AVR registers for startup enable, held/repeated presses, joystick center calibration,
 pulse counts, direction changes, physical bounds, delayed control servicing, and serial
 formatting/stop priority. These tests do not measure actual AVR execution time.
@@ -132,7 +133,7 @@ Before full-travel operation, check on hardware:
 2. The first press zeros position and calibrates joystick center without pulses.
 3. Positive deflection moves away from the chosen zero end.
 4. A logic analyzer shows active-low pulses, minimum pulse/inactive/setup timing,
-   and a maximum average rate of 325.95 Hz at the default scale; verify the 1 kHz control loop stays active
+   and a maximum average rate of 1140.82 Hz at the default scale; verify the 1 kHz control loop stays active
    including while serial output is running.
 5. Serial is readable at 115200 baud and later presses leave operation enabled.
 6. Motion brakes before both margins and can move inward afterward.

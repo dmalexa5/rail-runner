@@ -8,14 +8,15 @@ messages from [rail-teleop](../rail-teleop/README.md). It sends no serial comman
 and requires no handshake or lifecycle transitions.
 
 Each valid finite setpoint is published as `std_msgs/msg/Float64` in m/s after
-converting the firmware value from mm/s and multiplying by `scale`. Publication
+converting the unscaled firmware value from mm/s. Full joystick
+deflection publishes ±0.032 m/s (±32.0 mm/s). Publication
 follows the firmware stream (normally 100 Hz after the first joystick press),
 with SensorDataQoS and depth 1. No clamping, deadband, position limits, or
 acceleration/jerk limits are applied. Safety and stale-command handling belong
 to the rail-drive stack.
 
 Parameters are read-only: `serial.port` defaults to `/dev/ttyUSB0`,
-`command_topic` defaults to `rail_velocity`, and `scale` defaults to 1.0.
+`command_topic` defaults to `/rail_velocity`.
 Silence produces no messages. Malformed, nonfinite, or oversized lines (over
 95 characters excluding newline) are skipped with throttled warnings. Serial
 open failures or disconnections end the node with a nonzero exit status;

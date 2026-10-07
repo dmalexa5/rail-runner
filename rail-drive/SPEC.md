@@ -11,7 +11,8 @@ The AK60 operates in **MIT torque mode** at 48V with a max rated speed of 490 rp
 ### Motion
 
 Hardcoded `#define` constants    
-- `MAX_ACC` 50 mm/s^2
+- `MAX_ACC` 100 mm/s^2
+- `MAX_JRK` 150 mm/s^3
 - `MAX_VEL` 32 mm/s
 - `MIN_POS` 0 mm
 - `MAX_POS` 420 mm

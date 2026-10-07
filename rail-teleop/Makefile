@@ -1,6 +1,6 @@
 PORT ?= /dev/ttyUSB0
 BAUD ?= 115200
-SCALE ?= 0.2
+SCALE ?= 0.35
 CC = avr-gcc
 HOST_CC ?= cc
 ELF = build/rail-teleop.elf

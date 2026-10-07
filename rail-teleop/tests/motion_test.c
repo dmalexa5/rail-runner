@@ -17,10 +17,10 @@ int main(void)
 {
     assert(fabsf(MAX_POS / SCALE - 420.0f) < 0.001f);
     assert(fabsf(MAX_VEL / SCALE - 32.0f) < 0.001f);
-    assert(fabsf(MAX_ACC * SCALE - 50.0f) < 0.001f);
-    assert(fabsf(MAX_JRK * SCALE - 50.0f) < 0.001f);
+    assert(fabsf(MAX_ACC - 100.0f) < 0.001f);
+    assert(fabsf(MAX_JRK - 150.0f) < 0.001f);
     assert(fabsf(TRAVEL_PER_REV_MM - 62.83185f) < 0.001f);
-    assert(fabsf(PULSES_PER_MM * TRAVEL_PER_REV_MM - 3200.0f) < 0.001f);
+    assert(fabsf(PULSES_PER_MM * TRAVEL_PER_REV_MM - 6400.0f) < 0.001f);
     assert(fabsf(MAX_POS * PULSES_PER_MM - MAX_PULSES) < 1.0f);
     assert(joystick_velocity(0, 504) == -MAX_VEL);
     assert(joystick_velocity(1023, 504) == MAX_VEL);

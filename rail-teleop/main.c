@@ -178,7 +178,7 @@ static void control_cycle(int32_t pulses)
     }
     if (started && ++report_ms == 10) {
         report_ms = 0;
-        report(joystick_target);
+        report(joystick_target / SCALE);
     }
 }
 

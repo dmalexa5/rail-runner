@@ -13,9 +13,9 @@ from rclpy.qos import qos_profile_sensor_data
 from std_msgs.msg import Float64
 
 
-TOPIC = "rail_velocity"
-LINES = [b"sp 1500\n", b"sp -250.5\n", b"sp 0.0\n"]
-EXPECTED = [1.5, -0.2505, 0.0]
+TOPIC = "/rail_velocity"
+LINES = [b"sp 32.000\n", b"sp -32.000\n", b"sp 0.0\n"]
+EXPECTED = [0.032, -0.032, 0.0]
 TIMEOUT_S = 10.0
 
 

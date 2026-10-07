@@ -146,10 +146,10 @@ float joystick_velocity(unsigned sample, unsigned center)
 {
     int offset = (int)sample - (int)center;
     if (offset > JOYSTICK_DEADBAND)
-        return MAX_VEL * (offset - JOYSTICK_DEADBAND) /
-            (1023.0f - center - JOYSTICK_DEADBAND);
+        return MAX_VEL * ((float)(offset - JOYSTICK_DEADBAND) /
+            (1023.0f - center - JOYSTICK_DEADBAND));
     if (offset < -JOYSTICK_DEADBAND)
-        return MAX_VEL * (offset + JOYSTICK_DEADBAND) /
-            (center - JOYSTICK_DEADBAND);
+        return MAX_VEL * ((float)(offset + JOYSTICK_DEADBAND) /
+            (center - JOYSTICK_DEADBAND));
     return 0.0f;
 }

@@ -7,13 +7,6 @@ rail_teleop:
       read_only: true
   command_topic:
     type: string
-    default_value: "rail_velocity"
+    default_value: "/rail_velocity"
     description: "Topic on which joystick velocity setpoints are published."
     read_only: true
-  scale:
-    type: double
-    default_value: 1.0
-    description: "Multiplier applied to received joystick setpoints."
-    read_only: true
-    validation:
-      gt<>: [0.0]

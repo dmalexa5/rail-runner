@@ -1,8 +1,8 @@
 #ifndef MOTION_H
 #define MOTION_H
 
-#define MAX_JRK 100.0f
-#define MAX_ACC 70.0f
+#define MAX_JRK 150.0f
+#define MAX_ACC 100.0f
 #define MAX_VEL 32.0f
 #define CONTROL_DT_S 0.001f
 

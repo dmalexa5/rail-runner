@@ -142,10 +142,10 @@ int main(void)
     millisecond();
     assert(enabled && (PORTD & ENABLE));
 
-    check_broadcast(0, 0, true, "sp -6.400\n");
-    check_broadcast(1023, MAX_PULSES, true, "sp 6.400\n");
-    check_broadcast(0, 0, false, "sp -6.400\n");
-    check_broadcast(1023, MAX_PULSES, false, "sp 6.400\n");
+    check_broadcast(0, 0, true, "sp -32.000\n");
+    check_broadcast(1023, MAX_PULSES, true, "sp 32.000\n");
+    check_broadcast(0, 0, false, "sp -32.000\n");
+    check_broadcast(1023, MAX_PULSES, false, "sp 32.000\n");
     check_broadcast(480, 0, false, "sp 0.000\n");
 
     tx_head = tx_tail = 0;
